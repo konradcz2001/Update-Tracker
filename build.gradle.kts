@@ -27,7 +27,7 @@ tasks.withType<JavaCompile> {
 
 application {
     mainModule.set("com.github.konradcz2001.updatetracker")
-    mainClass.set("com.github.konradcz2001.updatetracker.HelloApplication")
+    mainClass.set("com.github.konradcz2001.updatetracker.UpdateTrackerApp")
 }
 
 javafx {
