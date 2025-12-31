@@ -15,6 +15,7 @@ public class TrackedProgram {
     private final StringProperty lastCheckDate;
     private String url; // URL to scrape
     private String cssSelector; // Selector for the version element
+    private String versionRegex;
 
     public TrackedProgram(String name) {
         this.name = new SimpleStringProperty(name);
@@ -23,6 +24,7 @@ public class TrackedProgram {
         this.lastCheckDate = new SimpleStringProperty(LocalDate.now().toString());
         this.url = "";
         this.cssSelector = "";
+        this.versionRegex = "";
     }
 
     // Getters for JavaFX Properties (required for TableView)
@@ -36,6 +38,9 @@ public class TrackedProgram {
     public void setUrl(String url) { this.url = url; }
     public String getUrl() { return url; }
     public void setCssSelector(String selector) { this.cssSelector = selector; }
+    public String getCssSelector() { return cssSelector; }
+    public void setVersionRegex(String regex) { this.versionRegex = regex; }
+    public String getVersionRegex() { return versionRegex; }
     public void setCurrentVersion(String version) { this.currentVersion.set(version); }
     public void setLastDownloadedVersion(String version) { this.lastDownloadedVersion.set(version); }
 }
