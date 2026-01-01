@@ -43,6 +43,7 @@
                 <Button text="Add Program" onAction="#onAddProgramClick" style="-fx-font-weight: bold;"/>
                 <Button text="Delete Selected" onAction="#onDeleteProgramClick"/>
                 <Button text="Configure Source" onAction="#onEditSourceClick"/>
+                <Button text="Download Update" onAction="#onDownloadUpdateClick"/>
             </HBox>
         </bottom>
     </BorderPane>
@@ -74,6 +75,7 @@
             <HBox spacing="10" alignment="CENTER_RIGHT" style="-fx-padding: 10; -fx-background-color: #f0f0f0;">
                 <Label text="Navigate to page, then click below:" textFill="#666666"/>
                 <Button text="Select Version Element" fx:id="selectElementBtn"/>
+                <Button text="Select Download Link" fx:id="selectDownloadBtn" onAction="#onSelectDownloadClick"/>
             </HBox>
         </bottom>
     </BorderPane>
