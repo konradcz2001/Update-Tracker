@@ -15,6 +15,7 @@ public class TrackedProgram {
     private String url;
     private String cssSelector;
     private String versionRegex;
+    private String downloadSelector = "";
 
     // Default constructor for Jackson
     public TrackedProgram() {
@@ -59,6 +60,9 @@ public class TrackedProgram {
 
     public String getVersionRegex() { return versionRegex; }
     public void setVersionRegex(String versionRegex) { this.versionRegex = versionRegex; }
+
+    public String getDownloadSelector() { return downloadSelector; }
+    public void setDownloadSelector(String downloadSelector) { this.downloadSelector = downloadSelector; }
 
     // --- JavaFX Properties (Ignored by Jackson) ---
 
