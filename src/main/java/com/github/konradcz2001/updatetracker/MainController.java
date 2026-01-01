@@ -2,6 +2,7 @@ package com.github.konradcz2001.updatetracker;
 
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.concurrent.Task;
 import javafx.concurrent.Worker;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
@@ -17,6 +18,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import java.util.regex.Matcher;
 
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -96,6 +100,86 @@ public class MainController {
         });
 
         engine.setOnAlert(event -> System.out.println("JS Alert: " + event.getData()));
+    }
+
+    @FXML
+    private void onScanUpdatesClick() {
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() {
+                // 1. Scan all tracked programs
+                for (TrackedProgram program : programList) {
+                    if (isCancelled()) break;
+
+                    checkProgramUpdate(program);
+
+                    try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+                }
+
+                // 2. Alert with summary
+                javafx.application.Platform.runLater(() -> {
+                    long updatesCount = programList.stream()
+                            .filter(p -> {
+                                String curr = p.getCurrentVersion();
+                                String last = p.getLastDownloadedVersion();
+                                // Only count if different, not N/A
+                                return !curr.equals(last)
+                                        && !curr.equals("N/A");
+                            })
+                            .count();
+
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                    alert.setTitle("Scan Completed");
+                    alert.setHeaderText(null);
+                    alert.setContentText("Scanning process finished.\nUpdates found: " + updatesCount);
+                    alert.showAndWait();
+                });
+
+                return null;
+            }
+        };
+
+        new Thread(task).start();
+    }
+
+    private void checkProgramUpdate(TrackedProgram program) {
+        if (program.getUrl() == null || program.getUrl().isEmpty()) return;
+
+        try {
+            org.jsoup.nodes.Document doc = org.jsoup.Jsoup.connect(program.getUrl())
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                    .timeout(10000)
+                    .get();
+
+            String fullText = "";
+            if (program.getCssSelector() != null && !program.getCssSelector().isEmpty()) {
+
+                org.jsoup.select.Elements elements = doc.select(program.getCssSelector());
+                if (!elements.isEmpty()) {
+                    fullText = elements.first().text();
+                }
+            } else {
+                fullText = doc.body().text();
+            }
+
+
+            if (program.getVersionRegex() != null && !program.getVersionRegex().isEmpty()) {
+                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(program.getVersionRegex());
+                java.util.regex.Matcher matcher = pattern.matcher(fullText);
+
+                if (matcher.find()) {
+                    String newVersion = matcher.groupCount() >= 1 ? matcher.group(1) : matcher.group(0);
+                    String finalVersion = newVersion.trim();
+
+                    javafx.application.Platform.runLater(() -> {
+                        program.setCurrentVersion(finalVersion);
+                        program.setLastCheckDate(java.time.LocalDate.now().toString());
+                    });
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Network/Parsing error for " + program.getName() + ": " + e.getMessage());
+        }
     }
 
     @FXML
