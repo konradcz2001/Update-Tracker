@@ -11,6 +11,12 @@ import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebHistory;
 import javafx.scene.web.WebView;
 import netscape.javascript.JSObject;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -37,6 +43,8 @@ public class MainController {
     private final ObservableList<TrackedProgram> programList = FXCollections.observableArrayList();
     private WebEngine engine;
     private TrackedProgram currentlyEditingProgram;
+    private static final String DATA_FILE = "tracked_programs.json";
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     // Strong reference to prevent GC
     private final JavaBridge bridge = new JavaBridge();
@@ -44,6 +52,8 @@ public class MainController {
     @FXML
     public void initialize() {
         engine = webView.getEngine();
+        loadData();
+        programTable.refresh();
 
         colName.setCellValueFactory(cellData -> cellData.getValue().nameProperty());
         colLastVersion.setCellValueFactory(cellData -> cellData.getValue().lastDownloadedVersionProperty());
@@ -52,6 +62,8 @@ public class MainController {
 
         programTable.setItems(programList);
         programTable.setPlaceholder(new Label("No programs tracked yet. Click 'Add Program'."));
+
+        programList.addListener((javafx.collections.ListChangeListener<TrackedProgram>) c -> saveData());
 
         selectElementBtn.setOnAction(e -> toggleSelectionMode());
 
@@ -69,6 +81,28 @@ public class MainController {
         });
 
         engine.setOnAlert(event -> System.out.println("JS Alert: " + event.getData()));
+    }
+
+    private void saveData() {
+        try {
+            // Use ArrayList copy to avoid serialization issues with ObservableList
+            objectMapper.writerWithDefaultPrettyPrinter()
+                    .writeValue(new File(DATA_FILE), new ArrayList<>(programList));
+        } catch (IOException e) {
+            System.err.println("Failed to save data: " + e.getMessage());
+        }
+    }
+
+    private void loadData() {
+        File file = new File(DATA_FILE);
+        if (file.exists()) {
+            try {
+                List<TrackedProgram> loaded = objectMapper.readValue(file, new TypeReference<>() {});
+                programList.setAll(loaded);
+            } catch (IOException e) {
+                System.err.println("Failed to load data: " + e.getMessage());
+            }
+        }
     }
 
     // --- Browser Navigation ---
@@ -228,6 +262,8 @@ public class MainController {
                         currentlyEditingProgram.setCurrentVersion(cleanVersion);
                         currentlyEditingProgram.setLastDownloadedVersion(cleanVersion);
                         currentlyEditingProgram.setUrl(engine.getLocation());
+
+                        saveData();
 
                         toggleSelectionMode();
                         switchToDashboard();
