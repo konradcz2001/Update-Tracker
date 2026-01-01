@@ -18,9 +18,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import java.util.regex.Matcher;
+import javafx.collections.transformation.SortedList;
+import java.util.Comparator;
 
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -45,7 +44,12 @@ public class MainController {
     private boolean isDownloadSelectionMode = false;
 
     // --- Data & Logic ---
-    private final ObservableList<TrackedProgram> programList = FXCollections.observableArrayList();
+    private final ObservableList<TrackedProgram> programList = FXCollections.observableArrayList(
+            program -> new javafx.beans.Observable[] {
+                    program.currentVersionProperty(),
+                    program.lastDownloadedVersionProperty()
+            }
+    );
     private WebEngine engine;
     private TrackedProgram currentlyEditingProgram;
     private static final String DATA_FILE = "tracked_programs.json";
@@ -65,7 +69,24 @@ public class MainController {
         colDate.setCellValueFactory(cellData -> cellData.getValue().lastCheckDateProperty());
         colCurrentVersion.setCellValueFactory(cellData -> cellData.getValue().currentVersionProperty());
 
-        programTable.setItems(programList);
+        SortedList<TrackedProgram> sortedList = new SortedList<>(programList);
+
+        // Define Comparator: Updates first, then Alphabetical by Name
+        sortedList.setComparator((p1, p2) -> {
+            boolean p1HasUpdate = !p1.getCurrentVersion().equals(p1.getLastDownloadedVersion())
+                    && !p1.getCurrentVersion().equals("N/A");
+
+            boolean p2HasUpdate = !p2.getCurrentVersion().equals(p2.getLastDownloadedVersion())
+                    && !p2.getCurrentVersion().equals("N/A");
+
+            // -1 means p1 comes first, 1 means p2 comes first
+            if (p1HasUpdate && !p2HasUpdate) return -1;
+            if (!p1HasUpdate && p2HasUpdate) return 1;
+
+            return p1.getName().compareToIgnoreCase(p2.getName());
+        });
+
+        programTable.setItems(sortedList);
         programTable.setPlaceholder(new Label("No programs tracked yet. Click 'Add Program'."));
 
         programList.addListener((javafx.collections.ListChangeListener<TrackedProgram>) c -> saveData());
