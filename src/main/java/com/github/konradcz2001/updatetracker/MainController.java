@@ -294,13 +294,21 @@ public class MainController {
     private void switchToEditor(TrackedProgram program) {
         this.currentlyEditingProgram = program;
         editorProgramNameLabel.setText(program.getName());
-        urlField.setText(program.getUrl());
 
-        if (program.getUrl() == null || program.getUrl().isEmpty()) {
+        String savedUrl = program.getUrl();
+        urlField.setText(savedUrl);
+
+        if (savedUrl == null || savedUrl.trim().isEmpty()) {
+            // Load empty content if no URL is set
             engine.loadContent("");
             saveConfigBtn.setDisable(true);
+            selectElementBtn.setDisable(true);
         } else {
-            engine.load(program.getUrl());
+            // Check for protocol to ensure engine loads it correctly
+            if (!savedUrl.startsWith("http")) {
+                savedUrl = "https://" + savedUrl;
+            }
+            engine.load(savedUrl);
             saveConfigBtn.setDisable(false);
             selectElementBtn.setDisable(false);
         }
