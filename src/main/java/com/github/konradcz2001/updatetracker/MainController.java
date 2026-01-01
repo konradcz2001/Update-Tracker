@@ -6,7 +6,9 @@ import javafx.concurrent.Worker;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.VBox;
 import javafx.scene.web.WebEngine;
+import javafx.scene.web.WebHistory;
 import javafx.scene.web.WebView;
 import netscape.javascript.JSObject;
 
@@ -30,22 +32,19 @@ public class MainController {
     @FXML private WebView webView;
     @FXML private Label editorProgramNameLabel;
     @FXML private Button selectElementBtn;
-    @FXML private Button saveConfigBtn;
 
     // --- Data & Logic ---
     private final ObservableList<TrackedProgram> programList = FXCollections.observableArrayList();
     private WebEngine engine;
     private TrackedProgram currentlyEditingProgram;
 
-    // Strong reference to the bridge object is required to prevent Garbage Collection
-    // from discarding it, which would break the JS-to-Java communication.
+    // Strong reference to prevent GC
     private final JavaBridge bridge = new JavaBridge();
 
     @FXML
     public void initialize() {
         engine = webView.getEngine();
 
-        // Bind table columns
         colName.setCellValueFactory(cellData -> cellData.getValue().nameProperty());
         colLastVersion.setCellValueFactory(cellData -> cellData.getValue().lastDownloadedVersionProperty());
         colDate.setCellValueFactory(cellData -> cellData.getValue().lastCheckDateProperty());
@@ -56,10 +55,10 @@ public class MainController {
 
         selectElementBtn.setOnAction(e -> toggleSelectionMode());
 
-        // Setup page load listener
         engine.getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
             if (newState == Worker.State.SUCCEEDED) {
-                // Register the Java bridge in the window object
+                urlField.setText(engine.getLocation());
+
                 JSObject window = (JSObject) engine.executeScript("window");
                 window.setMember("javaApp", bridge);
 
@@ -69,8 +68,23 @@ public class MainController {
             }
         });
 
-        // Optional: Redirect JS alerts to stdout for diagnostics
         engine.setOnAlert(event -> System.out.println("JS Alert: " + event.getData()));
+    }
+
+    // --- Browser Navigation ---
+
+    @FXML private void onBrowserBack() {
+        WebHistory history = engine.getHistory();
+        if (history.getCurrentIndex() > 0) history.go(-1);
+    }
+
+    @FXML private void onBrowserForward() {
+        WebHistory history = engine.getHistory();
+        if (history.getCurrentIndex() < history.getEntries().size() - 1) history.go(1);
+    }
+
+    @FXML private void onBrowserReload() {
+        engine.reload();
     }
 
     // --- Core Logic ---
@@ -82,24 +96,17 @@ public class MainController {
             injectSelectorScript();
         } else {
             selectElementBtn.setText("Select Version Element");
-            // Reloading clears any visual artifacts (red borders) from the page
             engine.reload();
         }
     }
 
-    /**
-     * Injects JavaScript that allows the user to visually select an element.
-     * Uses raycasting (document.elementFromPoint) to bypass potential overlay blocking.
-     */
     private void injectSelectorScript() {
         String script = """
             (function() {
-                // 1. Inject highlight styles
                 var style = document.createElement('style');
                 style.innerHTML = '.highlight-hover { outline: 3px solid red !important; cursor: context-menu !important; }';
                 document.head.appendChild(style);
 
-                // 2. CSS Path Generator
                 function getCssPath(el) {
                     if (!(el instanceof Element)) return;
                     var path = [];
@@ -122,12 +129,9 @@ public class MainController {
                     return path.join(" > ");
                 }
                 
-                // 3. Raycasting logic to find the visual element under cursor
                 function getElementUnderMouse(e) {
                     var el = document.elementFromPoint(e.clientX, e.clientY);
                     var current = el;
-                    
-                    // Traverse up to find meaningful containers (like anchors)
                     for(var i=0; i<5; i++) {
                         if(!current || current === document.body) break;
                         if(current.tagName.toLowerCase() === 'a') return current;
@@ -136,7 +140,6 @@ public class MainController {
                     return el;
                 }
 
-                // 4. Mouse Move Handler (Visual Feedback)
                 document.addEventListener('mousemove', function(e) {
                     if(!window.javaApp) return;
                     
@@ -147,9 +150,7 @@ public class MainController {
                     if (target) target.classList.add('highlight-hover');
                 }, true);
 
-                // 5. Click Handler (Selection)
                 document.addEventListener('click', function(e) {
-                    // Stop event propagation to prevent default browser navigation
                     e.preventDefault();
                     e.stopImmediatePropagation();
                     e.stopPropagation();
@@ -162,8 +163,6 @@ public class MainController {
                     
                     if(window.javaApp) {
                         window.javaApp.onElementSelected(cssSelector, textContent);
-                    } else {
-                        console.error("JavaBridge not found on window object.");
                     }
                     return false;
                 }, true);
@@ -177,49 +176,73 @@ public class MainController {
         }
     }
 
-    // --- Inner Class: Bridge for JavaScript Communication ---
+    // --- Inner Class: Bridge ---
     public class JavaBridge {
         public void onElementSelected(String cssSelector, String textContent) {
             javafx.application.Platform.runLater(() -> {
                 if (currentlyEditingProgram != null) {
                     String safeText = (textContent != null) ? textContent.trim() : "";
 
-                    TextInputDialog dialog = new TextInputDialog(safeText);
+                    Dialog<String> dialog = new Dialog<>();
                     dialog.setTitle("Detected Version");
                     dialog.setHeaderText("Confirm Version Number");
-                    dialog.setContentText("Found text:\n" + safeText + "\n\nKeep ONLY the version number:");
+
+                    ButtonType okButtonType = new ButtonType("OK", ButtonBar.ButtonData.OK_DONE);
+                    dialog.getDialogPane().getButtonTypes().addAll(okButtonType, ButtonType.CANCEL);
+
+                    VBox content = new VBox(10);
+
+                    // UI Label 1: Top
+                    Label topLabel = new Label("Found text:");
+
+                    // TextArea configuration
+                    TextArea textArea = new TextArea(safeText);
+                    textArea.setWrapText(true);
+                    textArea.setPrefRowCount(5);
+                    textArea.setPrefWidth(400);
+
+                    // UI Label 2: Bottom
+                    Label bottomLabel = new Label("Keep ONLY the version number");
+
+                    content.getChildren().addAll(topLabel, textArea, bottomLabel);
+                    dialog.getDialogPane().setContent(content);
+
+                    javafx.application.Platform.runLater(textArea::requestFocus);
+
+                    dialog.setResultConverter(dialogButton -> {
+                        if (dialogButton == okButtonType) {
+                            return textArea.getText();
+                        }
+                        return null;
+                    });
 
                     Optional<String> result = dialog.showAndWait();
+
                     result.ifPresent(cleanVersion -> {
                         cleanVersion = cleanVersion.trim();
                         String regex = createRegexFromSelection(safeText, cleanVersion);
 
-                        // Update Data Model
+                        // Auto-Save Data
                         currentlyEditingProgram.setCssSelector(cssSelector);
                         currentlyEditingProgram.setVersionRegex(regex);
                         currentlyEditingProgram.setCurrentVersion(cleanVersion);
                         currentlyEditingProgram.setLastDownloadedVersion(cleanVersion);
+                        currentlyEditingProgram.setUrl(engine.getLocation());
 
-                        toggleSelectionMode(); // Exit selection mode
+                        toggleSelectionMode();
+                        switchToDashboard();
                     });
                 }
             });
         }
     }
 
-    /**
-     * Generates a Regex pattern that captures the selected version string,
-     * escaping the surrounding prefix and suffix text.
-     */
     private String createRegexFromSelection(String fullText, String selectedVersion) {
         if (fullText.equals(selectedVersion)) return "(.*)";
-
         int index = fullText.indexOf(selectedVersion);
         if (index == -1) return "(.*)";
-
         String prefix = fullText.substring(0, index);
         String suffix = fullText.substring(index + selectedVersion.length());
-
         return Pattern.quote(prefix) + "(.*?)" + Pattern.quote(suffix);
     }
 
@@ -244,17 +267,13 @@ public class MainController {
     @FXML
     private void onDeleteProgramClick() {
         TrackedProgram selected = programTable.getSelectionModel().getSelectedItem();
-        if (selected != null) {
-            programList.remove(selected);
-        }
+        if (selected != null) programList.remove(selected);
     }
 
     @FXML
     private void onEditSourceClick() {
         TrackedProgram selected = programTable.getSelectionModel().getSelectedItem();
-        if (selected != null) {
-            switchToEditor(selected);
-        }
+        if (selected != null) switchToEditor(selected);
     }
 
     @FXML
@@ -266,17 +285,8 @@ public class MainController {
             if (isSelectionMode) toggleSelectionMode();
 
             engine.load(url);
-            saveConfigBtn.setDisable(false);
             selectElementBtn.setDisable(false);
         }
-    }
-
-    @FXML
-    private void onSaveConfigClick() {
-        if (currentlyEditingProgram != null) {
-            currentlyEditingProgram.setUrl(urlField.getText());
-        }
-        switchToDashboard();
     }
 
     @FXML
@@ -290,14 +300,16 @@ public class MainController {
     private void switchToEditor(TrackedProgram program) {
         this.currentlyEditingProgram = program;
         editorProgramNameLabel.setText(program.getName());
-        urlField.setText(program.getUrl());
 
-        if (program.getUrl() == null || program.getUrl().isEmpty()) {
+        String savedUrl = program.getUrl();
+        urlField.setText(savedUrl);
+
+        if (savedUrl == null || savedUrl.trim().isEmpty()) {
             engine.loadContent("");
-            saveConfigBtn.setDisable(true);
+            selectElementBtn.setDisable(true);
         } else {
-            engine.load(program.getUrl());
-            saveConfigBtn.setDisable(false);
+            if (!savedUrl.startsWith("http")) savedUrl = "https://" + savedUrl;
+            engine.load(savedUrl);
             selectElementBtn.setDisable(false);
         }
 
