@@ -55,9 +55,13 @@
                     <Label fx:id="editorProgramNameLabel" text="Program Name"/>
                     <HBox HBox.hgrow="ALWAYS"/> <Button text="Cancel / Back" onAction="#onBackToDashboard"/>
                 </HBox>
-                <HBox spacing="10">
-                    <TextField fx:id="urlField" promptText="Enter download page URL (e.g., https://example.com/download)" HBox.hgrow="ALWAYS"/>
-                    <Button text="Go" onAction="#onGoClick"/>
+
+                <HBox spacing="5" alignment="CENTER_LEFT">
+                    <Button text="←" onAction="#onBrowserBack" style="-fx-min-width: 30px;"/>
+                    <Button text="→" onAction="#onBrowserForward" style="-fx-min-width: 30px;"/>
+                    <Button text="↻" onAction="#onBrowserReload" style="-fx-min-width: 30px;"/>
+                    <TextField fx:id="urlField" promptText="Enter download page URL..." HBox.hgrow="ALWAYS"/>
+                    <Button text="Go" onAction="#onGoClick" defaultButton="true"/>
                 </HBox>
             </VBox>
         </top>
@@ -69,7 +73,7 @@
         <bottom>
             <HBox spacing="10" alignment="CENTER_RIGHT" style="-fx-padding: 10; -fx-background-color: #f0f0f0;">
                 <Label text="Navigate to page, then click below:" textFill="#666666"/>
-                <Button text="Select Version Element" fx:id="selectElementBtn" disable="true"/>
+                <Button text="Select Version Element" fx:id="selectElementBtn"/>
                 <Button text="Save &amp; Sync" fx:id="saveConfigBtn" onAction="#onSaveConfigClick" disable="true"/>
             </HBox>
         </bottom>

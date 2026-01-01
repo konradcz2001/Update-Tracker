@@ -7,6 +7,7 @@ import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.web.WebEngine;
+import javafx.scene.web.WebHistory;
 import javafx.scene.web.WebView;
 import netscape.javascript.JSObject;
 
@@ -38,7 +39,6 @@ public class MainController {
     private TrackedProgram currentlyEditingProgram;
 
     // Strong reference to the bridge object is required to prevent Garbage Collection
-    // from discarding it, which would break the JS-to-Java communication.
     private final JavaBridge bridge = new JavaBridge();
 
     @FXML
@@ -59,7 +59,10 @@ public class MainController {
         // Setup page load listener
         engine.getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
             if (newState == Worker.State.SUCCEEDED) {
-                // Register the Java bridge in the window object
+                // Update URL field to match actual page
+                urlField.setText(engine.getLocation());
+
+                // Register the Java bridge
                 JSObject window = (JSObject) engine.executeScript("window");
                 window.setMember("javaApp", bridge);
 
@@ -69,8 +72,31 @@ public class MainController {
             }
         });
 
-        // Optional: Redirect JS alerts to stdout for diagnostics
+        // Optional: Redirect JS alerts to stdout
         engine.setOnAlert(event -> System.out.println("JS Alert: " + event.getData()));
+    }
+
+    // --- Browser Navigation ---
+
+    @FXML
+    private void onBrowserBack() {
+        WebHistory history = engine.getHistory();
+        if (history.getCurrentIndex() > 0) {
+            history.go(-1);
+        }
+    }
+
+    @FXML
+    private void onBrowserForward() {
+        WebHistory history = engine.getHistory();
+        if (history.getCurrentIndex() < history.getEntries().size() - 1) {
+            history.go(1);
+        }
+    }
+
+    @FXML
+    private void onBrowserReload() {
+        engine.reload();
     }
 
     // --- Core Logic ---
@@ -82,24 +108,17 @@ public class MainController {
             injectSelectorScript();
         } else {
             selectElementBtn.setText("Select Version Element");
-            // Reloading clears any visual artifacts (red borders) from the page
             engine.reload();
         }
     }
 
-    /**
-     * Injects JavaScript that allows the user to visually select an element.
-     * Uses raycasting (document.elementFromPoint) to bypass potential overlay blocking.
-     */
     private void injectSelectorScript() {
         String script = """
             (function() {
-                // 1. Inject highlight styles
                 var style = document.createElement('style');
                 style.innerHTML = '.highlight-hover { outline: 3px solid red !important; cursor: context-menu !important; }';
                 document.head.appendChild(style);
 
-                // 2. CSS Path Generator
                 function getCssPath(el) {
                     if (!(el instanceof Element)) return;
                     var path = [];
@@ -122,12 +141,9 @@ public class MainController {
                     return path.join(" > ");
                 }
                 
-                // 3. Raycasting logic to find the visual element under cursor
                 function getElementUnderMouse(e) {
                     var el = document.elementFromPoint(e.clientX, e.clientY);
                     var current = el;
-                    
-                    // Traverse up to find meaningful containers (like anchors)
                     for(var i=0; i<5; i++) {
                         if(!current || current === document.body) break;
                         if(current.tagName.toLowerCase() === 'a') return current;
@@ -136,7 +152,6 @@ public class MainController {
                     return el;
                 }
 
-                // 4. Mouse Move Handler (Visual Feedback)
                 document.addEventListener('mousemove', function(e) {
                     if(!window.javaApp) return;
                     
@@ -147,9 +162,7 @@ public class MainController {
                     if (target) target.classList.add('highlight-hover');
                 }, true);
 
-                // 5. Click Handler (Selection)
                 document.addEventListener('click', function(e) {
-                    // Stop event propagation to prevent default browser navigation
                     e.preventDefault();
                     e.stopImmediatePropagation();
                     e.stopPropagation();
@@ -177,7 +190,7 @@ public class MainController {
         }
     }
 
-    // --- Inner Class: Bridge for JavaScript Communication ---
+    // --- Inner Class: Bridge ---
     public class JavaBridge {
         public void onElementSelected(String cssSelector, String textContent) {
             javafx.application.Platform.runLater(() -> {
@@ -194,32 +207,24 @@ public class MainController {
                         cleanVersion = cleanVersion.trim();
                         String regex = createRegexFromSelection(safeText, cleanVersion);
 
-                        // Update Data Model
                         currentlyEditingProgram.setCssSelector(cssSelector);
                         currentlyEditingProgram.setVersionRegex(regex);
                         currentlyEditingProgram.setCurrentVersion(cleanVersion);
                         currentlyEditingProgram.setLastDownloadedVersion(cleanVersion);
 
-                        toggleSelectionMode(); // Exit selection mode
+                        toggleSelectionMode();
                     });
                 }
             });
         }
     }
 
-    /**
-     * Generates a Regex pattern that captures the selected version string,
-     * escaping the surrounding prefix and suffix text.
-     */
     private String createRegexFromSelection(String fullText, String selectedVersion) {
         if (fullText.equals(selectedVersion)) return "(.*)";
-
         int index = fullText.indexOf(selectedVersion);
         if (index == -1) return "(.*)";
-
         String prefix = fullText.substring(0, index);
         String suffix = fullText.substring(index + selectedVersion.length());
-
         return Pattern.quote(prefix) + "(.*?)" + Pattern.quote(suffix);
     }
 
@@ -262,7 +267,6 @@ public class MainController {
         String url = urlField.getText();
         if (url != null && !url.trim().isEmpty()) {
             if (!url.startsWith("http")) url = "https://" + url;
-
             if (isSelectionMode) toggleSelectionMode();
 
             engine.load(url);
