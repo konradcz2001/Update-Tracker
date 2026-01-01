@@ -376,10 +376,15 @@ public class MainController {
                         currentlyEditingProgram.setLastDownloadedVersion(cleanVersion);
                         currentlyEditingProgram.setUrl(engine.getLocation());
 
-                        saveData(); // Important: Save immediately
+                        saveData();
 
+                        // 1. Show confirmation
+                        Alert alert = new Alert(Alert.AlertType.INFORMATION, "Version saved successfully!");
+                        alert.setHeaderText(null);
+                        alert.showAndWait();
+
+                        // 2. Exit selection mode (refreshes page, removes red outlines)
                         toggleSelectionMode();
-                        switchToDashboard();
                     });
                 }
             });
