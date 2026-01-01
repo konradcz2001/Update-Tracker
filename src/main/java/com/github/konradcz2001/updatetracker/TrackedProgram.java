@@ -20,7 +20,7 @@ public class TrackedProgram {
     // Default constructor for Jackson
     public TrackedProgram() {
         this.name = new SimpleStringProperty("");
-        this.currentVersion = new SimpleStringProperty("Checking...");
+        this.currentVersion = new SimpleStringProperty("N/A");
         this.lastDownloadedVersion = new SimpleStringProperty("N/A");
         this.lastCheckDate = new SimpleStringProperty(LocalDate.now().toString());
         this.url = "";
@@ -30,7 +30,7 @@ public class TrackedProgram {
 
     public TrackedProgram(String name) {
         this.name = new SimpleStringProperty(name);
-        this.currentVersion = new SimpleStringProperty("Checking...");
+        this.currentVersion = new SimpleStringProperty("N/A");
         this.lastDownloadedVersion = new SimpleStringProperty("N/A");
         this.lastCheckDate = new SimpleStringProperty(LocalDate.now().toString());
         this.url = "";

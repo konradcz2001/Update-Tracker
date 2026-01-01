@@ -40,10 +40,11 @@
 
         <bottom>
             <HBox spacing="10" alignment="CENTER_RIGHT" style="-fx-padding: 10;">
-                <Button text="Add Program" onAction="#onAddProgramClick" style="-fx-font-weight: bold;"/>
+                <Button text="Add Program" onAction="#onAddProgramClick"/>
                 <Button text="Delete Selected" onAction="#onDeleteProgramClick"/>
                 <Button text="Configure Source" onAction="#onEditSourceClick"/>
                 <Button text="Download Update" onAction="#onDownloadUpdateClick"/>
+                <Button text="Scan Updates" onAction="#onScanUpdatesClick" style="-fx-font-weight: bold;"/>
             </HBox>
         </bottom>
     </BorderPane>

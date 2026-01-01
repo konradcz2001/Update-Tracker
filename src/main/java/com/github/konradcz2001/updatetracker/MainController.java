@@ -2,6 +2,7 @@ package com.github.konradcz2001.updatetracker;
 
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.concurrent.Task;
 import javafx.concurrent.Worker;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
@@ -17,6 +18,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import javafx.collections.transformation.SortedList;
+import java.util.Comparator;
 
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -41,7 +44,12 @@ public class MainController {
     private boolean isDownloadSelectionMode = false;
 
     // --- Data & Logic ---
-    private final ObservableList<TrackedProgram> programList = FXCollections.observableArrayList();
+    private final ObservableList<TrackedProgram> programList = FXCollections.observableArrayList(
+            program -> new javafx.beans.Observable[] {
+                    program.currentVersionProperty(),
+                    program.lastDownloadedVersionProperty()
+            }
+    );
     private WebEngine engine;
     private TrackedProgram currentlyEditingProgram;
     private static final String DATA_FILE = "tracked_programs.json";
@@ -61,14 +69,56 @@ public class MainController {
         colDate.setCellValueFactory(cellData -> cellData.getValue().lastCheckDateProperty());
         colCurrentVersion.setCellValueFactory(cellData -> cellData.getValue().currentVersionProperty());
 
-        programTable.setItems(programList);
+        SortedList<TrackedProgram> sortedList = new SortedList<>(programList);
+
+        // Define Comparator: Updates first, then Alphabetical by Name
+        sortedList.setComparator((p1, p2) -> {
+            boolean p1HasUpdate = !p1.getCurrentVersion().equals(p1.getLastDownloadedVersion())
+                    && !p1.getCurrentVersion().equals("N/A");
+
+            boolean p2HasUpdate = !p2.getCurrentVersion().equals(p2.getLastDownloadedVersion())
+                    && !p2.getCurrentVersion().equals("N/A");
+
+            // -1 means p1 comes first, 1 means p2 comes first
+            if (p1HasUpdate && !p2HasUpdate) return -1;
+            if (!p1HasUpdate && p2HasUpdate) return 1;
+
+            return p1.getName().compareToIgnoreCase(p2.getName());
+        });
+
+        programTable.setItems(sortedList);
         programTable.setPlaceholder(new Label("No programs tracked yet. Click 'Add Program'."));
 
         programList.addListener((javafx.collections.ListChangeListener<TrackedProgram>) c -> saveData());
 
-        // Custom RowFactory to allow deselection on click
+        // Custom RowFactory for highlighting and deselection
         programTable.setRowFactory(tv -> {
-            TableRow<TrackedProgram> row = new TableRow<>();
+            TableRow<TrackedProgram> row = new TableRow<>() {
+                @Override
+                protected void updateItem(TrackedProgram item, boolean empty) {
+                    super.updateItem(item, empty);
+
+                    if (empty || item == null) {
+                        setStyle("");
+                    } else {
+                        String curr = item.getCurrentVersion();
+                        String last = item.getLastDownloadedVersion();
+
+                        // Logic to determine if outdated (same as in sorting/scanning)
+                        boolean isOutdated = !curr.equals(last)
+                                && !curr.equals("N/A");
+
+                        if (isOutdated) {
+                            // Light red background for outdated items
+                            setStyle("-fx-background-color: #ff8484;");
+                        } else {
+                            setStyle("");
+                        }
+                    }
+                }
+            };
+
+            // Deselection logic
             row.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, event -> {
                 if (!row.isEmpty() && event.isPrimaryButtonDown() && event.getClickCount() == 1) {
                     if (programTable.getSelectionModel().getSelectedItem() == row.getItem()) {
@@ -77,6 +127,7 @@ public class MainController {
                     }
                 }
             });
+
             return row;
         });
 
@@ -96,6 +147,106 @@ public class MainController {
         });
 
         engine.setOnAlert(event -> System.out.println("JS Alert: " + event.getData()));
+    }
+
+    @FXML
+    private void onScanUpdatesClick() {
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() {
+                for (TrackedProgram program : programList) {
+                    if (isCancelled()) break;
+
+                    // Capture success status
+                    boolean success = checkProgramUpdate(program);
+
+                    // If regex mismatch (false), stop scanning and handle error on UI thread
+                    if (!success) {
+                        javafx.application.Platform.runLater(() -> handleScanError(program));
+                        return null; // Stop the task
+                    }
+
+                    try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+                }
+
+                javafx.application.Platform.runLater(() -> {
+                    long updatesCount = programList.stream()
+                            .filter(p -> {
+                                String curr = p.getCurrentVersion();
+                                String last = p.getLastDownloadedVersion();
+                                return !curr.equals(last)
+                                        && !curr.equals("N/A");
+                            })
+                            .count();
+
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                    alert.setTitle("Scan Completed");
+                    alert.setHeaderText(null);
+                    alert.setContentText("Scanning process finished.\nUpdates found: " + updatesCount);
+                    alert.showAndWait();
+                });
+
+                return null;
+            }
+        };
+
+        new Thread(task).start();
+    }
+
+    private boolean checkProgramUpdate(TrackedProgram program) {
+        if (program.getUrl() == null || program.getUrl().isEmpty()) return true;
+
+        try {
+            org.jsoup.nodes.Document doc = org.jsoup.Jsoup.connect(program.getUrl())
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                    .timeout(10000)
+                    .get();
+
+            String fullText = "";
+            if (program.getCssSelector() != null && !program.getCssSelector().isEmpty()) {
+                org.jsoup.select.Elements elements = doc.select(program.getCssSelector());
+                if (!elements.isEmpty()) {
+                    fullText = elements.first().text();
+                }
+            } else {
+                fullText = doc.body().text();
+            }
+
+            if (program.getVersionRegex() != null && !program.getVersionRegex().isEmpty()) {
+                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(program.getVersionRegex());
+                java.util.regex.Matcher matcher = pattern.matcher(fullText);
+
+                if (matcher.find()) {
+                    String newVersion = matcher.groupCount() >= 1 ? matcher.group(1) : matcher.group(0);
+                    String finalVersion = newVersion.trim();
+
+                    javafx.application.Platform.runLater(() -> {
+                        program.setCurrentVersion(finalVersion);
+                        program.setLastCheckDate(java.time.LocalDate.now().toString());
+                    });
+                    return true; // Success
+                } else {
+                    return false; // Regex mismatch detected!
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Network/Parsing error for " + program.getName() + ": " + e.getMessage());
+        }
+        return true; // Default to true on network errors to continue scanning
+    }
+
+    // helper method for error handling
+    private void handleScanError(TrackedProgram program) {
+        Alert alert = new Alert(Alert.AlertType.WARNING);
+        alert.setTitle("Scan Error");
+        alert.setHeaderText("Regex Mismatch Detected");
+        alert.setContentText("Could not find version for " + program.getName() +
+                " using the saved pattern. Please re-configure.");
+
+        alert.showAndWait();
+
+        programTable.getSelectionModel().select(program);
+        switchToEditor(program);
     }
 
     @FXML
