@@ -53,7 +53,7 @@
                 <HBox spacing="10" alignment="CENTER_LEFT">
                     <Label text="Configuring:" style="-fx-font-weight: bold;"/>
                     <Label fx:id="editorProgramNameLabel" text="Program Name"/>
-                    <HBox HBox.hgrow="ALWAYS"/> <Button text="Cancel / Back" onAction="#onBackToDashboard"/>
+                    <HBox HBox.hgrow="ALWAYS"/> <Button text="Cancel" onAction="#onBackToDashboard"/>
                 </HBox>
 
                 <HBox spacing="5" alignment="CENTER_LEFT">
@@ -74,7 +74,6 @@
             <HBox spacing="10" alignment="CENTER_RIGHT" style="-fx-padding: 10; -fx-background-color: #f0f0f0;">
                 <Label text="Navigate to page, then click below:" textFill="#666666"/>
                 <Button text="Select Version Element" fx:id="selectElementBtn"/>
-                <Button text="Save &amp; Sync" fx:id="saveConfigBtn" onAction="#onSaveConfigClick" disable="true"/>
             </HBox>
         </bottom>
     </BorderPane>

@@ -31,21 +31,20 @@ public class MainController {
     @FXML private WebView webView;
     @FXML private Label editorProgramNameLabel;
     @FXML private Button selectElementBtn;
-    @FXML private Button saveConfigBtn;
+    // Save button reference removed
 
     // --- Data & Logic ---
     private final ObservableList<TrackedProgram> programList = FXCollections.observableArrayList();
     private WebEngine engine;
     private TrackedProgram currentlyEditingProgram;
 
-    // Strong reference to the bridge object is required to prevent Garbage Collection
+    // Strong reference to prevent GC
     private final JavaBridge bridge = new JavaBridge();
 
     @FXML
     public void initialize() {
         engine = webView.getEngine();
 
-        // Bind table columns
         colName.setCellValueFactory(cellData -> cellData.getValue().nameProperty());
         colLastVersion.setCellValueFactory(cellData -> cellData.getValue().lastDownloadedVersionProperty());
         colDate.setCellValueFactory(cellData -> cellData.getValue().lastCheckDateProperty());
@@ -56,13 +55,10 @@ public class MainController {
 
         selectElementBtn.setOnAction(e -> toggleSelectionMode());
 
-        // Setup page load listener
         engine.getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
             if (newState == Worker.State.SUCCEEDED) {
-                // Update URL field to match actual page
                 urlField.setText(engine.getLocation());
 
-                // Register the Java bridge
                 JSObject window = (JSObject) engine.executeScript("window");
                 window.setMember("javaApp", bridge);
 
@@ -72,30 +68,22 @@ public class MainController {
             }
         });
 
-        // Optional: Redirect JS alerts to stdout
         engine.setOnAlert(event -> System.out.println("JS Alert: " + event.getData()));
     }
 
     // --- Browser Navigation ---
 
-    @FXML
-    private void onBrowserBack() {
+    @FXML private void onBrowserBack() {
         WebHistory history = engine.getHistory();
-        if (history.getCurrentIndex() > 0) {
-            history.go(-1);
-        }
+        if (history.getCurrentIndex() > 0) history.go(-1);
     }
 
-    @FXML
-    private void onBrowserForward() {
+    @FXML private void onBrowserForward() {
         WebHistory history = engine.getHistory();
-        if (history.getCurrentIndex() < history.getEntries().size() - 1) {
-            history.go(1);
-        }
+        if (history.getCurrentIndex() < history.getEntries().size() - 1) history.go(1);
     }
 
-    @FXML
-    private void onBrowserReload() {
+    @FXML private void onBrowserReload() {
         engine.reload();
     }
 
@@ -175,8 +163,6 @@ public class MainController {
                     
                     if(window.javaApp) {
                         window.javaApp.onElementSelected(cssSelector, textContent);
-                    } else {
-                        console.error("JavaBridge not found on window object.");
                     }
                     return false;
                 }, true);
@@ -200,19 +186,23 @@ public class MainController {
                     TextInputDialog dialog = new TextInputDialog(safeText);
                     dialog.setTitle("Detected Version");
                     dialog.setHeaderText("Confirm Version Number");
-                    dialog.setContentText("Found text:\n" + safeText + "\n\nKeep ONLY the version number:");
+                    dialog.setContentText("Found text:\n" + safeText + "\n\nKeep ONLY the version number");
 
                     Optional<String> result = dialog.showAndWait();
                     result.ifPresent(cleanVersion -> {
                         cleanVersion = cleanVersion.trim();
                         String regex = createRegexFromSelection(safeText, cleanVersion);
 
+                        // Auto-Save Data
                         currentlyEditingProgram.setCssSelector(cssSelector);
                         currentlyEditingProgram.setVersionRegex(regex);
                         currentlyEditingProgram.setCurrentVersion(cleanVersion);
                         currentlyEditingProgram.setLastDownloadedVersion(cleanVersion);
+                        // Save the URL as well since we are finishing
+                        currentlyEditingProgram.setUrl(engine.getLocation());
 
                         toggleSelectionMode();
+                        switchToDashboard(); // Auto-exit to dashboard
                     });
                 }
             });
@@ -249,17 +239,13 @@ public class MainController {
     @FXML
     private void onDeleteProgramClick() {
         TrackedProgram selected = programTable.getSelectionModel().getSelectedItem();
-        if (selected != null) {
-            programList.remove(selected);
-        }
+        if (selected != null) programList.remove(selected);
     }
 
     @FXML
     private void onEditSourceClick() {
         TrackedProgram selected = programTable.getSelectionModel().getSelectedItem();
-        if (selected != null) {
-            switchToEditor(selected);
-        }
+        if (selected != null) switchToEditor(selected);
     }
 
     @FXML
@@ -267,20 +253,12 @@ public class MainController {
         String url = urlField.getText();
         if (url != null && !url.trim().isEmpty()) {
             if (!url.startsWith("http")) url = "https://" + url;
+
             if (isSelectionMode) toggleSelectionMode();
 
             engine.load(url);
-            saveConfigBtn.setDisable(false);
             selectElementBtn.setDisable(false);
         }
-    }
-
-    @FXML
-    private void onSaveConfigClick() {
-        if (currentlyEditingProgram != null) {
-            currentlyEditingProgram.setUrl(urlField.getText());
-        }
-        switchToDashboard();
     }
 
     @FXML
@@ -299,17 +277,11 @@ public class MainController {
         urlField.setText(savedUrl);
 
         if (savedUrl == null || savedUrl.trim().isEmpty()) {
-            // Load empty content if no URL is set
             engine.loadContent("");
-            saveConfigBtn.setDisable(true);
             selectElementBtn.setDisable(true);
         } else {
-            // Check for protocol to ensure engine loads it correctly
-            if (!savedUrl.startsWith("http")) {
-                savedUrl = "https://" + savedUrl;
-            }
+            if (!savedUrl.startsWith("http")) savedUrl = "https://" + savedUrl;
             engine.load(savedUrl);
-            saveConfigBtn.setDisable(false);
             selectElementBtn.setDisable(false);
         }
 
