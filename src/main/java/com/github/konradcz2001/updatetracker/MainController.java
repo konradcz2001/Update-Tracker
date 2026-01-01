@@ -65,6 +65,20 @@ public class MainController {
 
         programList.addListener((javafx.collections.ListChangeListener<TrackedProgram>) c -> saveData());
 
+        // Custom RowFactory to allow deselection on click
+        programTable.setRowFactory(tv -> {
+            TableRow<TrackedProgram> row = new TableRow<>();
+            row.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, event -> {
+                if (!row.isEmpty() && event.isPrimaryButtonDown() && event.getClickCount() == 1) {
+                    if (programTable.getSelectionModel().getSelectedItem() == row.getItem()) {
+                        programTable.getSelectionModel().clearSelection();
+                        event.consume();
+                    }
+                }
+            });
+            return row;
+        });
+
         selectElementBtn.setOnAction(e -> toggleSelectionMode());
 
         engine.getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
