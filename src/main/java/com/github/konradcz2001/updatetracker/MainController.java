@@ -91,9 +91,34 @@ public class MainController {
 
         programList.addListener((javafx.collections.ListChangeListener<TrackedProgram>) c -> saveData());
 
-        // Custom RowFactory to allow deselection on click
+        // Custom RowFactory for highlighting and deselection
         programTable.setRowFactory(tv -> {
-            TableRow<TrackedProgram> row = new TableRow<>();
+            TableRow<TrackedProgram> row = new TableRow<>() {
+                @Override
+                protected void updateItem(TrackedProgram item, boolean empty) {
+                    super.updateItem(item, empty);
+
+                    if (empty || item == null) {
+                        setStyle("");
+                    } else {
+                        String curr = item.getCurrentVersion();
+                        String last = item.getLastDownloadedVersion();
+
+                        // Logic to determine if outdated (same as in sorting/scanning)
+                        boolean isOutdated = !curr.equals(last)
+                                && !curr.equals("N/A");
+
+                        if (isOutdated) {
+                            // Light red background for outdated items
+                            setStyle("-fx-background-color: #ff8484;");
+                        } else {
+                            setStyle("");
+                        }
+                    }
+                }
+            };
+
+            // Deselection logic
             row.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, event -> {
                 if (!row.isEmpty() && event.isPrimaryButtonDown() && event.getClickCount() == 1) {
                     if (programTable.getSelectionModel().getSelectedItem() == row.getItem()) {
@@ -102,6 +127,7 @@ public class MainController {
                     }
                 }
             });
+
             return row;
         });
 
