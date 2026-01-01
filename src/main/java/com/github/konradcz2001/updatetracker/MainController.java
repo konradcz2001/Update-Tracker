@@ -6,6 +6,7 @@ import javafx.concurrent.Worker;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.VBox;
 import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebHistory;
 import javafx.scene.web.WebView;
@@ -31,7 +32,6 @@ public class MainController {
     @FXML private WebView webView;
     @FXML private Label editorProgramNameLabel;
     @FXML private Button selectElementBtn;
-    // Save button reference removed
 
     // --- Data & Logic ---
     private final ObservableList<TrackedProgram> programList = FXCollections.observableArrayList();
@@ -183,12 +183,41 @@ public class MainController {
                 if (currentlyEditingProgram != null) {
                     String safeText = (textContent != null) ? textContent.trim() : "";
 
-                    TextInputDialog dialog = new TextInputDialog(safeText);
+                    Dialog<String> dialog = new Dialog<>();
                     dialog.setTitle("Detected Version");
                     dialog.setHeaderText("Confirm Version Number");
-                    dialog.setContentText("Found text:\n" + safeText + "\n\nKeep ONLY the version number");
+
+                    ButtonType okButtonType = new ButtonType("OK", ButtonBar.ButtonData.OK_DONE);
+                    dialog.getDialogPane().getButtonTypes().addAll(okButtonType, ButtonType.CANCEL);
+
+                    VBox content = new VBox(10);
+
+                    // UI Label 1: Top
+                    Label topLabel = new Label("Found text:");
+
+                    // TextArea configuration
+                    TextArea textArea = new TextArea(safeText);
+                    textArea.setWrapText(true);
+                    textArea.setPrefRowCount(5);
+                    textArea.setPrefWidth(400);
+
+                    // UI Label 2: Bottom
+                    Label bottomLabel = new Label("Keep ONLY the version number");
+
+                    content.getChildren().addAll(topLabel, textArea, bottomLabel);
+                    dialog.getDialogPane().setContent(content);
+
+                    javafx.application.Platform.runLater(textArea::requestFocus);
+
+                    dialog.setResultConverter(dialogButton -> {
+                        if (dialogButton == okButtonType) {
+                            return textArea.getText();
+                        }
+                        return null;
+                    });
 
                     Optional<String> result = dialog.showAndWait();
+
                     result.ifPresent(cleanVersion -> {
                         cleanVersion = cleanVersion.trim();
                         String regex = createRegexFromSelection(safeText, cleanVersion);
@@ -198,11 +227,10 @@ public class MainController {
                         currentlyEditingProgram.setVersionRegex(regex);
                         currentlyEditingProgram.setCurrentVersion(cleanVersion);
                         currentlyEditingProgram.setLastDownloadedVersion(cleanVersion);
-                        // Save the URL as well since we are finishing
                         currentlyEditingProgram.setUrl(engine.getLocation());
 
                         toggleSelectionMode();
-                        switchToDashboard(); // Auto-exit to dashboard
+                        switchToDashboard();
                     });
                 }
             });
