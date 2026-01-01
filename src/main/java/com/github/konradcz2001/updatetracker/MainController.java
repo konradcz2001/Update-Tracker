@@ -107,22 +107,26 @@ public class MainController {
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() {
-                // 1. Scan all tracked programs
                 for (TrackedProgram program : programList) {
                     if (isCancelled()) break;
 
-                    checkProgramUpdate(program);
+                    // Capture success status
+                    boolean success = checkProgramUpdate(program);
+
+                    // If regex mismatch (false), stop scanning and handle error on UI thread
+                    if (!success) {
+                        javafx.application.Platform.runLater(() -> handleScanError(program));
+                        return null; // Stop the task
+                    }
 
                     try { Thread.sleep(200); } catch (InterruptedException ignored) {}
                 }
 
-                // 2. Alert with summary
                 javafx.application.Platform.runLater(() -> {
                     long updatesCount = programList.stream()
                             .filter(p -> {
                                 String curr = p.getCurrentVersion();
                                 String last = p.getLastDownloadedVersion();
-                                // Only count if different, not N/A
                                 return !curr.equals(last)
                                         && !curr.equals("N/A");
                             })
@@ -142,8 +146,8 @@ public class MainController {
         new Thread(task).start();
     }
 
-    private void checkProgramUpdate(TrackedProgram program) {
-        if (program.getUrl() == null || program.getUrl().isEmpty()) return;
+    private boolean checkProgramUpdate(TrackedProgram program) {
+        if (program.getUrl() == null || program.getUrl().isEmpty()) return true;
 
         try {
             org.jsoup.nodes.Document doc = org.jsoup.Jsoup.connect(program.getUrl())
@@ -153,7 +157,6 @@ public class MainController {
 
             String fullText = "";
             if (program.getCssSelector() != null && !program.getCssSelector().isEmpty()) {
-
                 org.jsoup.select.Elements elements = doc.select(program.getCssSelector());
                 if (!elements.isEmpty()) {
                     fullText = elements.first().text();
@@ -161,7 +164,6 @@ public class MainController {
             } else {
                 fullText = doc.body().text();
             }
-
 
             if (program.getVersionRegex() != null && !program.getVersionRegex().isEmpty()) {
                 java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(program.getVersionRegex());
@@ -175,11 +177,29 @@ public class MainController {
                         program.setCurrentVersion(finalVersion);
                         program.setLastCheckDate(java.time.LocalDate.now().toString());
                     });
+                    return true; // Success
+                } else {
+                    return false; // Regex mismatch detected!
                 }
             }
         } catch (Exception e) {
             System.err.println("Network/Parsing error for " + program.getName() + ": " + e.getMessage());
         }
+        return true; // Default to true on network errors to continue scanning
+    }
+
+    // helper method for error handling
+    private void handleScanError(TrackedProgram program) {
+        Alert alert = new Alert(Alert.AlertType.WARNING);
+        alert.setTitle("Scan Error");
+        alert.setHeaderText("Regex Mismatch Detected");
+        alert.setContentText("Could not find version for " + program.getName() +
+                " using the saved pattern. Please re-configure.");
+
+        alert.showAndWait();
+
+        programTable.getSelectionModel().select(program);
+        switchToEditor(program);
     }
 
     @FXML
