@@ -28,6 +28,11 @@ import java.util.Optional;
 
 public class MainController {
 
+    static {
+        java.net.CookieHandler.setDefault(null);
+        java.util.logging.Logger.getLogger("java.net.CookieManager").setLevel(java.util.logging.Level.OFF);
+    }
+
     // --- UI Elements ---
     @FXML private BorderPane dashboardView;
     @FXML private TableView<TrackedProgram> programTable;
@@ -63,7 +68,16 @@ public class MainController {
     @FXML
     public void initialize() {
         engine = webView.getEngine();
+
+        // Optimization
         engine.setCreatePopupHandler(null); // Prevent popups to improve stability
+        engine.getHistory().setMaxSize(10);
+        engine.setUserStyleSheetLocation("data:text/css," +
+                "img, video, canvas, svg, object, iframe, .ads, .ad {" +
+                "   display: none !important;" +
+                "   visibility: hidden !important;" +
+                "}");
+
         loadData();
         programTable.refresh();
 
@@ -222,7 +236,7 @@ public class MainController {
         try {
             org.jsoup.nodes.Document doc = org.jsoup.Jsoup.connect(program.getUrl())
                     .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                    .timeout(30000)
+                    .timeout(15000)
                     .get();
 
             String fullText = "";
@@ -236,7 +250,7 @@ public class MainController {
             }
 
             if (fullText.isEmpty()) {
-                System.out.println("Jsoup empty for " + program.getName() + ". Switching to Browser..."); // Dodaj to
+                System.out.println("Jsoup empty for " + program.getName() + ". Switching to Browser...");
                 checkUpdateWithBrowser(program, future);
             } else {
                 boolean regexResult = processScrapedText(program, fullText);
