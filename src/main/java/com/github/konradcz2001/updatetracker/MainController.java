@@ -19,15 +19,12 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import javafx.collections.transformation.SortedList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.Optional;
-import java.util.regex.Pattern;
 
 public class MainController {
 
@@ -175,6 +172,7 @@ public class MainController {
                             updatesFound[0]++;
                         }
                     } else {
+                        System.err.println("Critical error for program: " + program.getName());
                         failedPrograms.add(program);
                     }
 
@@ -187,7 +185,14 @@ public class MainController {
                         alert.setTitle("Scan Completed with Errors");
                         alert.setHeaderText("Failed to check " + failedPrograms.size() + " programs");
 
-                        // Opcjonalnie: Logic to show failed programs and ask to fix
+                        StringBuilder content = new StringBuilder("Could not check:\n");
+                        for (TrackedProgram p : failedPrograms) {
+                            content.append("- ").append(p.getName()).append("\n");
+                        }
+                        content.append("\nDo you want to fix the first one now?");
+                        alert.setContentText(content.toString());
+
+                        // Logic to show failed programs and ask to fix
                         ButtonType fixButton = new ButtonType("Fix First Failed");
                         ButtonType closeButton = new ButtonType("Close", ButtonBar.ButtonData.CANCEL_CLOSE);
                         alert.getButtonTypes().setAll(fixButton, closeButton);
@@ -231,6 +236,7 @@ public class MainController {
             }
 
             if (fullText.isEmpty()) {
+                System.out.println("Jsoup empty for " + program.getName() + ". Switching to Browser..."); // Dodaj to
                 checkUpdateWithBrowser(program, future);
             } else {
                 boolean regexResult = processScrapedText(program, fullText);
@@ -308,6 +314,8 @@ public class MainController {
 
             if (result != null) {
                 String fullText = result.toString().replace('\u00A0', ' ').trim();
+                System.out.println("Browser (" + program.getName() + ") found: " + fullText);
+
                 boolean regexResult = processScrapedText(program, fullText);
                 future.complete(regexResult);
             } else {
@@ -349,7 +357,11 @@ public class MainController {
                         program.setLastCheckDate(java.time.LocalDate.now().toString());
                         programTable.refresh();
                     });
+                    System.out.println(">>> SUCCESS: " + program.getName() + " -> " + versionToSave);
                     return true;
+                } else {
+                    System.err.println("Mismatch for " + program.getName() + ": Text '" + fullText + "' does not match the regex.");
+                    return false;
                 }
             } catch (Exception e) {
                 System.err.println("Regex error for " + program.getName() + ": " + e.getMessage());
@@ -359,19 +371,6 @@ public class MainController {
         return true;
     }
 
-    // helper method for error handling
-    private void handleScanError(TrackedProgram program) {
-        Alert alert = new Alert(Alert.AlertType.WARNING);
-        alert.setTitle("Scan Error");
-        alert.setHeaderText("Regex Mismatch Detected");
-        alert.setContentText("Could not find version for " + program.getName() +
-                " using the saved pattern. Please re-configure.");
-
-        alert.showAndWait();
-
-        programTable.getSelectionModel().select(program);
-        switchToEditor(program);
-    }
 
     @FXML
     private void onSelectDownloadClick() {
@@ -509,77 +508,85 @@ public class MainController {
 
     private void injectSelectorScript() {
         String script = """
-            (function() {
-                var style = document.createElement('style');
-                style.innerHTML = '.highlight-hover { outline: 3px solid red !important; cursor: context-menu !important; }';
-                document.head.appendChild(style);
+        (function() {
+            var lastTarget = null;
+            var lastOutline = '';
 
-                function getCssPath(el) {
-                    if (!(el instanceof Element)) return;
-                    var path = [];
-                    while (el.nodeType === Node.ELEMENT_NODE) {
-                        var selector = el.nodeName.toLowerCase();
-                        if (el.id) {
-                            selector += '#' + el.id;
-                            path.unshift(selector);
-                            break;
-                        } else {
-                            var sib = el, nth = 1;
-                            while (sib = sib.previousElementSibling) {
-                                if (sib.nodeName.toLowerCase() == selector) nth++;
-                            }
-                            if (nth != 1) selector += ":nth-of-type("+nth+")";
-                        }
+            function getCssPath(el) {
+                if (!(el instanceof Element)) return;
+                if (el.id) return '#' + el.id;
+
+                var path = [];
+                var current = el;
+                
+                while (current && current.nodeType === Node.ELEMENT_NODE) {
+                    var selector = current.nodeName.toLowerCase();
+                    if (current.id) {
+                        selector = '#' + current.id;
                         path.unshift(selector);
-                        el = el.parentNode;
+                        break; 
                     }
-                    return path.join(" > ");
+                    var className = current.getAttribute("class");
+                    if (className && className.trim().length > 0) {
+                        var validClasses = className.split(/\\s+/).filter(function(c) {
+                            return c.length > 2 && !c.startsWith('_') && !c.startsWith('rs-');
+                        });
+                        if (validClasses.length > 0) {
+                            selector += '.' + validClasses.join('.');
+                        }
+                    }
+                    path.unshift(selector);
+                    var looseSelector = path.join(' ');
+                    if (document.querySelectorAll(looseSelector).length === 1) {
+                        return looseSelector;
+                    }
+                    current = current.parentNode;
                 }
-        
-                function getElementUnderMouse(e) {
-                    var el = document.elementFromPoint(e.clientX, e.clientY);
-                    var current = el;
-                    for(var i=0; i<5; i++) {
-                        if(!current || current === document.body) break;
-                        if(current.tagName.toLowerCase() === 'a') return current;
-                        current = current.parentElement;
+                return path.join(' ');
+            }
+
+            document.addEventListener('mouseover', function(e) {
+                if (!e.ctrlKey) {
+                    if (lastTarget) {
+                        lastTarget.style.outline = lastOutline;
+                        lastTarget = null;
                     }
-                    return el;
+                    return;
                 }
+                var target = e.target;
+                if (target === lastTarget) return;
 
-                document.addEventListener('mousemove', function(e) {
-                    if(!window.javaApp) return;
-        
-                    var target = getElementUnderMouse(e);
-                    var prev = document.querySelector('.highlight-hover');
-        
-                    if (prev && prev !== target) prev.classList.remove('highlight-hover');
-                    if (target) target.classList.add('highlight-hover');
-                }, true);
+                if (lastTarget) lastTarget.style.outline = lastOutline;
+                lastTarget = target;
+                lastOutline = target.style.outline;
+                target.style.outline = "3px solid red";
+                e.stopPropagation();
+            }, true);
 
-                document.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
-                    e.stopPropagation();
-        
-                    var target = getElementUnderMouse(e);
-                    if(!target) return false;
-        
-                    var textContent = (target.innerText || target.textContent || "").trim();
-                    var cssSelector = getCssPath(target);
-        
-                    if(window.javaApp) {
-                        window.javaApp.onElementSelected(cssSelector, textContent);
-                    }
-                    return false;
-                }, true);
-            })();
+            document.addEventListener('click', function(e) {
+                if (!e.ctrlKey) return;
+                e.preventDefault();
+                e.stopPropagation();
+                
+                var target = e.target;
+                if(!target) return false;
+
+                var cssSelector = getCssPath(target);
+                cssSelector = cssSelector.replace(/div\\./g, '.'); // clean up
+                var textContent = (target.innerText || target.textContent || "").replace(/\\s+/g, ' ').trim();
+                
+                if(window.javaApp) {
+                    window.javaApp.onElementSelected(cssSelector, textContent);
+                }
+                return false;
+            }, true);
+        })();
         """;
 
         try {
             engine.executeScript(script);
         } catch (Exception ex) {
-            System.err.println("Failed to inject selector script: " + ex.getMessage());
+            System.err.println("Script inject failed: " + ex.getMessage());
         }
     }
 
@@ -666,17 +673,7 @@ public class MainController {
         }
     }
 
-//    private String createRegexFromSelection(String fullText, String selectedVersion) {
-//        if (fullText.equals(selectedVersion)) return "(.*)";
-//        int index = fullText.indexOf(selectedVersion);
-//        if (index == -1) return "(.*)";
-//        String prefix = fullText.substring(0, index);
-//        String suffix = fullText.substring(index + selectedVersion.length());
-//        return Pattern.quote(prefix) + "(.*?)" + Pattern.quote(suffix);
-//    }
-
     // --- UI Event Handlers ---
-
     @FXML
     private void onAddProgramClick() {
         TextInputDialog dialog = new TextInputDialog();
