@@ -66,6 +66,7 @@ public class MainController {
     @FXML
     public void initialize() {
         engine = webView.getEngine();
+        engine.setCreatePopupHandler(null); // Prevent popups to improve stability
         loadData();
         programTable.refresh();
 
@@ -159,85 +160,94 @@ public class MainController {
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() {
+                int[] updatesFound = {0};
+                List<TrackedProgram> failedPrograms = new ArrayList<>();
+
                 for (TrackedProgram program : programList) {
                     if (isCancelled()) break;
 
-                    // Capture success status
                     boolean success = checkProgramUpdate(program);
 
-                    // If regex mismatch (false), stop scanning and handle error on UI thread
-                    if (!success) {
-                        javafx.application.Platform.runLater(() -> handleScanError(program));
-                        return null; // Stop the task
+                    if (success) {
+                        String curr = program.getCurrentVersion();
+                        String last = program.getLastDownloadedVersion();
+                        if (!curr.equals(last) && !curr.equals("N/A")) {
+                            updatesFound[0]++;
+                        }
+                    } else {
+                        failedPrograms.add(program);
                     }
 
                     try { Thread.sleep(200); } catch (InterruptedException ignored) {}
                 }
 
                 javafx.application.Platform.runLater(() -> {
-                    long updatesCount = programList.stream()
-                            .filter(p -> {
-                                String curr = p.getCurrentVersion();
-                                String last = p.getLastDownloadedVersion();
-                                return !curr.equals(last)
-                                        && !curr.equals("N/A");
-                            })
-                            .count();
+                    if (!failedPrograms.isEmpty()) {
+                        Alert alert = new Alert(Alert.AlertType.WARNING);
+                        alert.setTitle("Scan Completed with Errors");
+                        alert.setHeaderText("Failed to check " + failedPrograms.size() + " programs");
 
-                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                    alert.setTitle("Scan Completed");
-                    alert.setHeaderText(null);
-                    alert.setContentText("Scanning process finished.\nUpdates found: " + updatesCount);
-                    alert.showAndWait();
+                        // Opcjonalnie: Logic to show failed programs and ask to fix
+                        ButtonType fixButton = new ButtonType("Fix First Failed");
+                        ButtonType closeButton = new ButtonType("Close", ButtonBar.ButtonData.CANCEL_CLOSE);
+                        alert.getButtonTypes().setAll(fixButton, closeButton);
+
+                        Optional<ButtonType> result = alert.showAndWait();
+                        if (result.isPresent() && result.get() == fixButton) {
+                            switchToEditor(failedPrograms.get(0));
+                        }
+                    } else {
+                        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                        alert.setTitle("Scan Completed");
+                        alert.setContentText("Scanning finished. Updates found: " + updatesFound[0]);
+                        alert.showAndWait();
+                    }
                 });
-
                 return null;
             }
         };
-
         new Thread(task).start();
     }
 
     private boolean checkProgramUpdate(TrackedProgram program) {
         if (program.getUrl() == null || program.getUrl().isEmpty()) return true;
 
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+
         try {
             org.jsoup.nodes.Document doc = org.jsoup.Jsoup.connect(program.getUrl())
                     .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                    .timeout(10000)
+                    .timeout(30000)
                     .get();
 
             String fullText = "";
             if (program.getCssSelector() != null && !program.getCssSelector().isEmpty()) {
                 org.jsoup.select.Elements elements = doc.select(program.getCssSelector());
                 if (!elements.isEmpty()) {
-                    fullText = elements.first().text();
+                    fullText = elements.first().text().replace('\u00A0', ' ').trim();
                 }
             } else {
-                fullText = doc.body().text();
+                fullText = doc.body().text().replace('\u00A0', ' ').trim();
             }
 
-            if (program.getVersionRegex() != null && !program.getVersionRegex().isEmpty()) {
-                Pattern pattern = Pattern.compile(program.getVersionRegex());
-                java.util.regex.Matcher matcher = pattern.matcher(fullText);
-
-                if (matcher.find()) {
-                    String newVersion = matcher.groupCount() >= 1 ? matcher.group(1) : matcher.group(0);
-                    String finalVersion = newVersion.trim();
-
-                    javafx.application.Platform.runLater(() -> {
-                        program.setCurrentVersion(finalVersion);
-                        program.setLastCheckDate(java.time.LocalDate.now().toString());
-                    });
-                    return true; // Success
-                } else {
-                    return false; // Regex mismatch detected!
-                }
+            if (fullText.isEmpty()) {
+                checkUpdateWithBrowser(program, future);
+            } else {
+                boolean regexResult = processScrapedText(program, fullText);
+                future.complete(regexResult);
             }
+
         } catch (Exception e) {
-            System.err.println("Network/Parsing error for " + program.getName() + ": " + e.getMessage());
+            System.err.println("Jsoup error for " + program.getName() + ". Switching to Browser...");
+            checkUpdateWithBrowser(program, future);
         }
-        return true; // Default to true on network errors to continue scanning
+
+        try {
+            // Main thread waits here (max 45s)
+            return future.get(45, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // --- BROWSER FALLBACK LOGIC ---
