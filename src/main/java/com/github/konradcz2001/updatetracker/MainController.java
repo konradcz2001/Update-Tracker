@@ -31,12 +31,6 @@ import java.util.regex.Pattern;
 
 public class MainController {
 
-    static{
-        Logger logger = Logger.getLogger("java.net.CookieManager");
-        logger.setLevel(Level.WARNING);
-        logger.setUseParentHandlers(false);
-    }
-
     // --- UI Elements ---
     @FXML private BorderPane dashboardView;
     @FXML private TableView<TrackedProgram> programTable;
