@@ -246,6 +246,115 @@ public class MainController {
         return true; // Default to true on network errors to continue scanning
     }
 
+    // --- BROWSER FALLBACK LOGIC ---
+    private void checkUpdateWithBrowser(TrackedProgram program, CompletableFuture<Boolean> future) {
+        javafx.application.Platform.runLater(() -> {
+            WebView hiddenBrowser = new WebView();
+            hiddenBrowser.resize(1920, 1080);
+            WebEngine webEngine = hiddenBrowser.getEngine();
+            System.setProperty("com.sun.webkit.useHTTP2Loader", "false");
+
+            // Watchdog timer to prevent indefinite hanging
+            Timer timeoutTimer = new Timer();
+            timeoutTimer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    javafx.application.Platform.runLater(() -> {
+                        if (!future.isDone()) {
+                            System.out.println("Browser Timeout for " + program.getName() + ". Attempting forced extraction...");
+                            webEngine.getLoadWorker().cancel();
+                            extractTextFromBrowser(webEngine, program, future);
+                            hiddenBrowser.setPageFill(null);
+                        }
+                    });
+                }
+            }, 25000); // 25 seconds timeout
+
+            webEngine.getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
+                if (newState == Worker.State.SUCCEEDED) {
+                    timeoutTimer.cancel();
+                    // Wait additional time for JS rendering
+                    new Timer().schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            javafx.application.Platform.runLater(() -> {
+                                if (!future.isDone()) {
+                                    extractTextFromBrowser(webEngine, program, future);
+                                    hiddenBrowser.setPageFill(null);
+                                }
+                            });
+                        }
+                    }, 4000);
+                } else if (newState == Worker.State.FAILED) {
+                    timeoutTimer.cancel();
+                    System.err.println("Browser failed to load: " + program.getUrl());
+                    future.complete(false);
+                }
+            });
+
+            webEngine.load(program.getUrl());
+        });
+    }
+
+    private void extractTextFromBrowser(WebEngine webEngine, TrackedProgram program, CompletableFuture<Boolean> future) {
+        try {
+            // Try to get text content via JS
+            String jsScript = "var el = document.querySelector('" + program.getCssSelector() + "'); el ? el.textContent : null;";
+            Object result = webEngine.executeScript(jsScript);
+
+            if (result != null) {
+                String fullText = result.toString().replace('\u00A0', ' ').trim();
+                boolean regexResult = processScrapedText(program, fullText);
+                future.complete(regexResult);
+            } else {
+                System.err.println("Browser selector returned null for " + program.getName());
+                future.complete(false);
+            }
+        } catch (Exception e) {
+            System.err.println("Browser JS error for " + program.getName() + ": " + e.getMessage());
+            future.complete(false);
+        }
+    }
+
+    private boolean processScrapedText(TrackedProgram program, String fullText) {
+        if (program.getVersionRegex() != null && !program.getVersionRegex().isEmpty()) {
+            try {
+                String flexibleRegex = program.getVersionRegex().replace("•", "."); // Handle bullets
+                Pattern pattern = Pattern.compile(flexibleRegex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.DOTALL);
+                java.util.regex.Matcher matcher = pattern.matcher(fullText);
+
+                if (matcher.find()) {
+                    String finalVersion;
+                    if (matcher.groupCount() >= 1) {
+                        StringBuilder sb = new StringBuilder();
+                        for (int i = 1; i <= matcher.groupCount(); i++) {
+                            String g = matcher.group(i);
+                            if (g != null && !g.trim().isEmpty()) {
+                                if (sb.length() > 0) sb.append(" ");
+                                sb.append(g.trim());
+                            }
+                        }
+                        finalVersion = sb.toString().trim();
+                    } else {
+                        finalVersion = matcher.group(0).trim();
+                    }
+
+                    String versionToSave = finalVersion;
+                    javafx.application.Platform.runLater(() -> {
+                        program.setCurrentVersion(versionToSave);
+                        program.setLastCheckDate(java.time.LocalDate.now().toString());
+                        programTable.refresh();
+                    });
+                    return true;
+                }
+            } catch (Exception e) {
+                System.err.println("Regex error for " + program.getName() + ": " + e.getMessage());
+                return false;
+            }
+        }
+        return true;
+    }
+
     // helper method for error handling
     private void handleScanError(TrackedProgram program) {
         Alert alert = new Alert(Alert.AlertType.WARNING);
