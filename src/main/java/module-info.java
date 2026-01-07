@@ -6,6 +6,7 @@ module com.github.konradcz2001.updatetracker {
     requires com.fasterxml.jackson.databind;
     requires jdk.jsobject;
     requires java.desktop;
+    requires java.logging;
 
 
     opens com.github.konradcz2001.updatetracker to javafx.fxml;
