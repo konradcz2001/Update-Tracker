@@ -274,8 +274,15 @@ public class MainController {
     private void checkUpdateWithBrowser(TrackedProgram program, CompletableFuture<Boolean> future) {
         javafx.application.Platform.runLater(() -> {
             WebView hiddenBrowser = new WebView();
-            hiddenBrowser.resize(1920, 1080);
+            // Optimization
             WebEngine webEngine = hiddenBrowser.getEngine();
+            webEngine.setCreatePopupHandler(null);
+            webEngine.setUserStyleSheetLocation("data:text/css," +
+                    "img, video, canvas, svg, object, iframe, .ads, .ad {" +
+                    "   display: none !important;" +
+                    "   visibility: hidden !important;" +
+                    "}");
+            webEngine.getHistory().setMaxSize(0);
             System.setProperty("com.sun.webkit.useHTTP2Loader", "false");
 
             // Watchdog timer to prevent indefinite hanging
