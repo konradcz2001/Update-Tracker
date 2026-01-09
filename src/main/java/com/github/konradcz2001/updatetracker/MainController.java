@@ -19,12 +19,25 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import javafx.collections.transformation.SortedList;
-import java.util.Comparator;
-
-import java.util.Optional;
 import java.util.regex.Pattern;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.Optional;
+import javafx.geometry.Pos;
+import javafx.geometry.Insets;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Collections;
 
 public class MainController {
+
+    static {
+        java.net.CookieHandler.setDefault(null);
+        java.util.logging.Logger.getLogger("java.net.CookieManager").setLevel(java.util.logging.Level.OFF);
+    }
 
     // --- UI Elements ---
     @FXML private BorderPane dashboardView;
@@ -61,6 +74,16 @@ public class MainController {
     @FXML
     public void initialize() {
         engine = webView.getEngine();
+
+        // Optimization
+        engine.setCreatePopupHandler(null); // Prevent popups to improve stability
+        engine.getHistory().setMaxSize(10);
+        engine.setUserStyleSheetLocation("data:text/css," +
+                "img, video, canvas, svg, object, iframe, .ads, .ad {" +
+                "   display: none !important;" +
+                "   visibility: hidden !important;" +
+                "}");
+
         loadData();
         programTable.refresh();
 
@@ -151,103 +174,316 @@ public class MainController {
 
     @FXML
     private void onScanUpdatesClick() {
+        // 1. Prepare UI for Progress Dialog
+        Dialog<ButtonType> progressDialog = new Dialog<>();
+        progressDialog.setTitle("Scanning Updates");
+        progressDialog.setHeaderText("Checking program versions...");
+
+        ProgressBar progressBar = new ProgressBar(0);
+        progressBar.setPrefWidth(300);
+
+        Label statusLabel = new Label("Initializing parallel scan...");
+        statusLabel.setPrefWidth(300);
+
+        VBox content = new VBox(10, statusLabel, progressBar);
+        content.setPadding(new Insets(20));
+        content.setAlignment(Pos.CENTER);
+        progressDialog.getDialogPane().setContent(content);
+
+        // Add Cancel button
+        ButtonType cancelButtonType = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+        progressDialog.getDialogPane().getButtonTypes().add(cancelButtonType);
+
+        // 2. Create the Task
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() {
+                // Thread-safe counters and lists
+                AtomicInteger updatesFound = new AtomicInteger(0);
+                AtomicInteger processedCount = new AtomicInteger(0);
+                // Synchronized list for collecting errors from multiple threads
+                List<TrackedProgram> failedPrograms = Collections.synchronizedList(new ArrayList<>());
+
+                int total = programList.size();
+
+                // --- PARALLEL EXECUTION SETUP ---
+                // Create a thread pool (6 threads allows fast scanning without killing CPU)
+                ExecutorService executor = Executors.newFixedThreadPool(6);
+                List<CompletableFuture<Void>> futures = new ArrayList<>();
+
                 for (TrackedProgram program : programList) {
                     if (isCancelled()) break;
 
-                    // Capture success status
-                    boolean success = checkProgramUpdate(program);
+                    // Create an async task for each program
+                    CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                        if (isCancelled()) return;
 
-                    // If regex mismatch (false), stop scanning and handle error on UI thread
-                    if (!success) {
-                        javafx.application.Platform.runLater(() -> handleScanError(program));
-                        return null; // Stop the task
-                    }
+                        // Check update (Heavy work)
+                        boolean success = checkProgramUpdate(program);
 
-                    try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+                        // Update counters and logic
+                        if (success) {
+                            String curr = program.getCurrentVersion();
+                            String last = program.getLastDownloadedVersion();
+                            if (!curr.equals(last) && !curr.equals("N/A")) {
+                                updatesFound.incrementAndGet();
+                            }
+                        } else {
+                            System.err.println("Critical error for program: " + program.getName());
+                            failedPrograms.add(program);
+                        }
+
+                        // Safely update progress bar
+                        int current = processedCount.incrementAndGet();
+                        updateProgress(current, total);
+
+                        // Update message (throttle slightly to avoid UI spam)
+                        javafx.application.Platform.runLater(() ->
+                                statusLabel.setText("Scanned " + current + "/" + total + " (" + program.getName() + ")")
+                        );
+
+                    }, executor);
+
+                    futures.add(future);
                 }
 
+                // Wait for ALL tasks to finish
+                try {
+                    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+                } catch (Exception e) {
+                    if (!isCancelled()) e.printStackTrace();
+                } finally {
+                    executor.shutdownNow(); // Clean up threads
+                }
+
+                // Finalize UI
+                updateProgress(total, total);
+                updateMessage("Finalizing results...");
+
+                // 3. Show Results (on UI Thread)
                 javafx.application.Platform.runLater(() -> {
-                    long updatesCount = programList.stream()
-                            .filter(p -> {
-                                String curr = p.getCurrentVersion();
-                                String last = p.getLastDownloadedVersion();
-                                return !curr.equals(last)
-                                        && !curr.equals("N/A");
-                            })
-                            .count();
+                    progressDialog.setResult(ButtonType.CANCEL);
+                    progressDialog.close();
 
-                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                    alert.setTitle("Scan Completed");
-                    alert.setHeaderText(null);
-                    alert.setContentText("Scanning process finished.\nUpdates found: " + updatesCount);
-                    alert.showAndWait();
+                    if (isCancelled()) return;
+
+                    if (!failedPrograms.isEmpty()) {
+                        Alert alert = new Alert(Alert.AlertType.WARNING);
+                        alert.setTitle("Scan Completed with Errors");
+                        alert.setHeaderText("Failed to check " + failedPrograms.size() + " programs");
+
+                        StringBuilder sb = new StringBuilder("Could not check:\n");
+                        // Sort failed list because threads finish in random order
+                        synchronized (failedPrograms) {
+                            failedPrograms.sort((p1, p2) -> p1.getName().compareToIgnoreCase(p2.getName()));
+                            for (TrackedProgram p : failedPrograms) {
+                                sb.append("- ").append(p.getName()).append("\n");
+                            }
+                        }
+
+                        sb.append("\nDo you want to fix the first one now?");
+                        alert.setContentText(sb.toString());
+
+                        ButtonType fixButton = new ButtonType("Fix First Failed");
+                        ButtonType closeButton = new ButtonType("Close", ButtonBar.ButtonData.CANCEL_CLOSE);
+                        alert.getButtonTypes().setAll(fixButton, closeButton);
+
+                        Optional<ButtonType> result = alert.showAndWait();
+                        if (result.isPresent() && result.get() == fixButton) {
+                            switchToEditor(failedPrograms.get(0));
+                        }
+                    } else {
+                        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                        alert.setTitle("Scan Completed");
+                        alert.setContentText("Scanning finished. Updates found: " + updatesFound.get());
+                        alert.showAndWait();
+                    }
                 });
-
                 return null;
             }
         };
 
-        new Thread(task).start();
+        // 3. Bind UI
+        progressBar.progressProperty().bind(task.progressProperty());
+        // Note: We update label manually in the loop for better control in multithreading
+
+        progressDialog.setOnCloseRequest(e -> {
+            if (task.isRunning()) {
+                task.cancel();
+            }
+        });
+
+        Thread thread = new Thread(task);
+        thread.setDaemon(true);
+        thread.start();
+
+        progressDialog.show();
     }
 
     private boolean checkProgramUpdate(TrackedProgram program) {
         if (program.getUrl() == null || program.getUrl().isEmpty()) return true;
 
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+
         try {
             org.jsoup.nodes.Document doc = org.jsoup.Jsoup.connect(program.getUrl())
                     .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                    .timeout(10000)
+                    .timeout(15000)
                     .get();
 
             String fullText = "";
             if (program.getCssSelector() != null && !program.getCssSelector().isEmpty()) {
                 org.jsoup.select.Elements elements = doc.select(program.getCssSelector());
                 if (!elements.isEmpty()) {
-                    fullText = elements.first().text();
+                    fullText = elements.first().text().replace('\u00A0', ' ').trim();
                 }
             } else {
-                fullText = doc.body().text();
+                fullText = doc.body().text().replace('\u00A0', ' ').trim();
             }
 
-            if (program.getVersionRegex() != null && !program.getVersionRegex().isEmpty()) {
-                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(program.getVersionRegex());
+            if (fullText.isEmpty()) {
+                System.out.println("Jsoup empty for " + program.getName() + ". Switching to Browser...");
+                checkUpdateWithBrowser(program, future);
+            } else {
+                boolean regexResult = processScrapedText(program, fullText);
+                future.complete(regexResult);
+            }
+
+        } catch (Exception e) {
+            System.err.println("Jsoup error for " + program.getName() + ". Switching to Browser...");
+            checkUpdateWithBrowser(program, future);
+        }
+
+        try {
+            // Main thread waits here (max 45s)
+            return future.get(45, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // --- BROWSER FALLBACK LOGIC ---
+    private void checkUpdateWithBrowser(TrackedProgram program, CompletableFuture<Boolean> future) {
+        javafx.application.Platform.runLater(() -> {
+            WebView hiddenBrowser = new WebView();
+            // Optimization
+            WebEngine webEngine = hiddenBrowser.getEngine();
+            webEngine.setCreatePopupHandler(null);
+            webEngine.setUserStyleSheetLocation("data:text/css," +
+                    "img, video, canvas, svg, object, iframe, .ads, .ad {" +
+                    "   display: none !important;" +
+                    "   visibility: hidden !important;" +
+                    "}");
+            webEngine.getHistory().setMaxSize(0);
+            System.setProperty("com.sun.webkit.useHTTP2Loader", "false");
+
+            // Watchdog timer to prevent indefinite hanging
+            Timer timeoutTimer = new Timer();
+            timeoutTimer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    javafx.application.Platform.runLater(() -> {
+                        if (!future.isDone()) {
+                            System.out.println("Browser Timeout for " + program.getName() + ". Attempting forced extraction...");
+                            webEngine.getLoadWorker().cancel();
+                            extractTextFromBrowser(webEngine, program, future);
+                            hiddenBrowser.setPageFill(null);
+                        }
+                    });
+                }
+            }, 25000); // 25 seconds timeout
+
+            webEngine.getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
+                if (newState == Worker.State.SUCCEEDED) {
+                    timeoutTimer.cancel();
+                    // Wait additional time for JS rendering
+                    new Timer().schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            javafx.application.Platform.runLater(() -> {
+                                if (!future.isDone()) {
+                                    extractTextFromBrowser(webEngine, program, future);
+                                    hiddenBrowser.setPageFill(null);
+                                }
+                            });
+                        }
+                    }, 4000);
+                } else if (newState == Worker.State.FAILED) {
+                    timeoutTimer.cancel();
+                    System.err.println("Browser failed to load: " + program.getUrl());
+                    future.complete(false);
+                }
+            });
+
+            webEngine.load(program.getUrl());
+        });
+    }
+
+    private void extractTextFromBrowser(WebEngine webEngine, TrackedProgram program, CompletableFuture<Boolean> future) {
+        try {
+            // Try to get text content via JS
+            String jsScript = "var el = document.querySelector('" + program.getCssSelector() + "'); el ? el.textContent : null;";
+            Object result = webEngine.executeScript(jsScript);
+
+            if (result != null) {
+                String fullText = result.toString().replace('\u00A0', ' ').trim();
+                System.out.println("Browser (" + program.getName() + ") found: " + fullText);
+
+                boolean regexResult = processScrapedText(program, fullText);
+                future.complete(regexResult);
+            } else {
+                System.err.println("Browser selector returned null for " + program.getName());
+                future.complete(false);
+            }
+        } catch (Exception e) {
+            System.err.println("Browser JS error for " + program.getName() + ": " + e.getMessage());
+            future.complete(false);
+        }
+    }
+
+    private boolean processScrapedText(TrackedProgram program, String fullText) {
+        if (program.getVersionRegex() != null && !program.getVersionRegex().isEmpty()) {
+            try {
+                String flexibleRegex = program.getVersionRegex().replace("•", "."); // Handle bullets
+                Pattern pattern = Pattern.compile(flexibleRegex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.DOTALL);
                 java.util.regex.Matcher matcher = pattern.matcher(fullText);
 
                 if (matcher.find()) {
-                    String newVersion = matcher.groupCount() >= 1 ? matcher.group(1) : matcher.group(0);
-                    String finalVersion = newVersion.trim();
+                    String finalVersion;
+                    if (matcher.groupCount() >= 1) {
+                        StringBuilder sb = new StringBuilder();
+                        for (int i = 1; i <= matcher.groupCount(); i++) {
+                            String g = matcher.group(i);
+                            if (g != null && !g.trim().isEmpty()) {
+                                if (sb.length() > 0) sb.append(" ");
+                                sb.append(g.trim());
+                            }
+                        }
+                        finalVersion = sb.toString().trim();
+                    } else {
+                        finalVersion = matcher.group(0).trim();
+                    }
 
+                    String versionToSave = finalVersion;
                     javafx.application.Platform.runLater(() -> {
-                        program.setCurrentVersion(finalVersion);
+                        program.setCurrentVersion(versionToSave);
                         program.setLastCheckDate(java.time.LocalDate.now().toString());
+                        programTable.refresh();
                     });
-                    return true; // Success
+                    System.out.println(">>> SUCCESS: " + program.getName() + " -> " + versionToSave);
+                    return true;
                 } else {
-                    return false; // Regex mismatch detected!
+                    System.err.println("Mismatch for " + program.getName() + ": Text '" + fullText + "' does not match the regex.");
+                    return false;
                 }
+            } catch (Exception e) {
+                System.err.println("Regex error for " + program.getName() + ": " + e.getMessage());
+                return false;
             }
-        } catch (Exception e) {
-            System.err.println("Network/Parsing error for " + program.getName() + ": " + e.getMessage());
         }
-        return true; // Default to true on network errors to continue scanning
+        return true;
     }
 
-    // helper method for error handling
-    private void handleScanError(TrackedProgram program) {
-        Alert alert = new Alert(Alert.AlertType.WARNING);
-        alert.setTitle("Scan Error");
-        alert.setHeaderText("Regex Mismatch Detected");
-        alert.setContentText("Could not find version for " + program.getName() +
-                " using the saved pattern. Please re-configure.");
-
-        alert.showAndWait();
-
-        programTable.getSelectionModel().select(program);
-        switchToEditor(program);
-    }
 
     @FXML
     private void onSelectDownloadClick() {
@@ -385,77 +621,85 @@ public class MainController {
 
     private void injectSelectorScript() {
         String script = """
-            (function() {
-                var style = document.createElement('style');
-                style.innerHTML = '.highlight-hover { outline: 3px solid red !important; cursor: context-menu !important; }';
-                document.head.appendChild(style);
+        (function() {
+            var lastTarget = null;
+            var lastOutline = '';
 
-                function getCssPath(el) {
-                    if (!(el instanceof Element)) return;
-                    var path = [];
-                    while (el.nodeType === Node.ELEMENT_NODE) {
-                        var selector = el.nodeName.toLowerCase();
-                        if (el.id) {
-                            selector += '#' + el.id;
-                            path.unshift(selector);
-                            break;
-                        } else {
-                            var sib = el, nth = 1;
-                            while (sib = sib.previousElementSibling) {
-                                if (sib.nodeName.toLowerCase() == selector) nth++;
-                            }
-                            if (nth != 1) selector += ":nth-of-type("+nth+")";
-                        }
+            function getCssPath(el) {
+                if (!(el instanceof Element)) return;
+                if (el.id) return '#' + el.id;
+
+                var path = [];
+                var current = el;
+                
+                while (current && current.nodeType === Node.ELEMENT_NODE) {
+                    var selector = current.nodeName.toLowerCase();
+                    if (current.id) {
+                        selector = '#' + current.id;
                         path.unshift(selector);
-                        el = el.parentNode;
+                        break; 
                     }
-                    return path.join(" > ");
+                    var className = current.getAttribute("class");
+                    if (className && className.trim().length > 0) {
+                        var validClasses = className.split(/\\s+/).filter(function(c) {
+                            return c.length > 2 && !c.startsWith('_') && !c.startsWith('rs-');
+                        });
+                        if (validClasses.length > 0) {
+                            selector += '.' + validClasses.join('.');
+                        }
+                    }
+                    path.unshift(selector);
+                    var looseSelector = path.join(' ');
+                    if (document.querySelectorAll(looseSelector).length === 1) {
+                        return looseSelector;
+                    }
+                    current = current.parentNode;
                 }
-        
-                function getElementUnderMouse(e) {
-                    var el = document.elementFromPoint(e.clientX, e.clientY);
-                    var current = el;
-                    for(var i=0; i<5; i++) {
-                        if(!current || current === document.body) break;
-                        if(current.tagName.toLowerCase() === 'a') return current;
-                        current = current.parentElement;
+                return path.join(' ');
+            }
+
+            document.addEventListener('mouseover', function(e) {
+                if (!e.ctrlKey) {
+                    if (lastTarget) {
+                        lastTarget.style.outline = lastOutline;
+                        lastTarget = null;
                     }
-                    return el;
+                    return;
                 }
+                var target = e.target;
+                if (target === lastTarget) return;
 
-                document.addEventListener('mousemove', function(e) {
-                    if(!window.javaApp) return;
-        
-                    var target = getElementUnderMouse(e);
-                    var prev = document.querySelector('.highlight-hover');
-        
-                    if (prev && prev !== target) prev.classList.remove('highlight-hover');
-                    if (target) target.classList.add('highlight-hover');
-                }, true);
+                if (lastTarget) lastTarget.style.outline = lastOutline;
+                lastTarget = target;
+                lastOutline = target.style.outline;
+                target.style.outline = "3px solid red";
+                e.stopPropagation();
+            }, true);
 
-                document.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
-                    e.stopPropagation();
-        
-                    var target = getElementUnderMouse(e);
-                    if(!target) return false;
-        
-                    var textContent = (target.innerText || target.textContent || "").trim();
-                    var cssSelector = getCssPath(target);
-        
-                    if(window.javaApp) {
-                        window.javaApp.onElementSelected(cssSelector, textContent);
-                    }
-                    return false;
-                }, true);
-            })();
+            document.addEventListener('click', function(e) {
+                if (!e.ctrlKey) return;
+                e.preventDefault();
+                e.stopPropagation();
+                
+                var target = e.target;
+                if(!target) return false;
+
+                var cssSelector = getCssPath(target);
+                cssSelector = cssSelector.replace(/div\\./g, '.'); // clean up
+                var textContent = (target.innerText || target.textContent || "").replace(/\\s+/g, ' ').trim();
+                
+                if(window.javaApp) {
+                    window.javaApp.onElementSelected(cssSelector, textContent);
+                }
+                return false;
+            }, true);
+        })();
         """;
 
         try {
             engine.executeScript(script);
         } catch (Exception ex) {
-            System.err.println("Failed to inject selector script: " + ex.getMessage());
+            System.err.println("Script inject failed: " + ex.getMessage());
         }
     }
 
@@ -542,17 +786,7 @@ public class MainController {
         }
     }
 
-    private String createRegexFromSelection(String fullText, String selectedVersion) {
-        if (fullText.equals(selectedVersion)) return "(.*)";
-        int index = fullText.indexOf(selectedVersion);
-        if (index == -1) return "(.*)";
-        String prefix = fullText.substring(0, index);
-        String suffix = fullText.substring(index + selectedVersion.length());
-        return Pattern.quote(prefix) + "(.*?)" + Pattern.quote(suffix);
-    }
-
     // --- UI Event Handlers ---
-
     @FXML
     private void onAddProgramClick() {
         TextInputDialog dialog = new TextInputDialog();
@@ -628,5 +862,121 @@ public class MainController {
         this.currentlyEditingProgram = null;
         dashboardView.setVisible(true);
         editorView.setVisible(false);
+    }
+
+    // --- Regex ---
+    private String makeSafeRegex(String input) {
+        StringBuilder sb = new StringBuilder();
+        for (char c : input.toCharArray()) {
+            if (Character.isLetterOrDigit(c) || " :.-()[]".indexOf(c) != -1) {
+                sb.append(Pattern.quote(String.valueOf(c)));
+            } else {
+                // Replace special characters (bullets, nbsp, etc.) with a wildcard
+                sb.append(".");
+            }
+        }
+        return sb.toString();
+    }
+
+    private String generateSmartPrefix(String prefix) {
+        int lastDigitIndex = -1;
+        for (int i = prefix.length() - 1; i >= 0; i--) {
+            if (Character.isDigit(prefix.charAt(i))) {
+                lastDigitIndex = i;
+                break;
+            }
+        }
+        String anchor = (lastDigitIndex != -1) ? prefix.substring(lastDigitIndex + 1) : prefix;
+        return ".*?" + makeSafeRegex(anchor);
+    }
+
+    private String createMultiPartRegex(String fullText, String selectedVersion) {
+        String[] parts = selectedVersion.split("\\s+");
+        if (parts.length < 2) return "(.*)";
+
+        StringBuilder regexBuilder = new StringBuilder();
+        String firstPart = parts[0];
+        int firstIndex = fullText.indexOf(firstPart);
+        if (firstIndex == -1) return "(.*)";
+
+        String prefix = fullText.substring(0, firstIndex);
+        regexBuilder.append(generateSmartPrefix(prefix));
+
+        int currentPos = firstIndex;
+        for (int i = 0; i < parts.length; i++) {
+            String part = parts[i];
+            regexBuilder.append("(").append(makeSafeRegex(part)).append(")");
+
+            if (i < parts.length - 1) {
+                String nextPart = parts[i + 1];
+                int nextIndex = fullText.indexOf(nextPart, currentPos + part.length());
+                if (nextIndex != -1) {
+                    regexBuilder.append(".*?");
+                    currentPos = nextIndex;
+                } else {
+                    regexBuilder.append(".*?");
+                }
+            }
+        }
+
+        String lastPart = parts[parts.length - 1];
+        int lastIndex = fullText.lastIndexOf(lastPart);
+        if (lastIndex != -1) {
+            String suffix = fullText.substring(lastIndex + lastPart.length());
+            regexBuilder.append(suffix.isEmpty() ? "(.*)" : makeSafeRegex(suffix));
+        } else {
+            regexBuilder.append("(.*)");
+        }
+        return regexBuilder.toString();
+    }
+
+    private String createSmartSelfHealingRegex(String fullText, String selectedVersion) {
+        int index = fullText.indexOf(selectedVersion);
+        if (index == -1) return "(.*)";
+
+        String prefix = fullText.substring(0, index);
+        String suffix = fullText.substring(index + selectedVersion.length());
+
+        String regexPrefix = generateSmartPrefix(prefix);
+        String regexSuffix = suffix.isEmpty() ? "(.*)" : "(.*?)" + makeSafeRegex(suffix);
+
+        String candidateRegex = regexPrefix + regexSuffix;
+
+        if (!testRegex(fullText, candidateRegex, selectedVersion)) {
+            regexPrefix = makeSafeRegex(prefix);
+        }
+        return regexPrefix + regexSuffix;
+    }
+
+    private boolean testRegex(String fullText, String regex, String expectedValue) {
+        try {
+            Pattern p = Pattern.compile(regex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.DOTALL);
+            java.util.regex.Matcher m = p.matcher(fullText);
+            if (m.find()) {
+                String captured;
+                if (m.groupCount() >= 1) {
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 1; i <= m.groupCount(); i++) {
+                        String g = m.group(i);
+                        if (g != null && !g.trim().isEmpty()) {
+                            if (sb.length() > 0) sb.append(" ");
+                            sb.append(g.trim());
+                        }
+                    }
+                    captured = sb.toString().trim();
+                } else {
+                    captured = m.group(0).trim();
+                }
+                return captured.equalsIgnoreCase(expectedValue.trim());
+            }
+        } catch (Exception e) { return false; }
+        return false;
+    }
+
+    private String createRegexFromSelection(String fullText, String selectedVersion) {
+        if (fullText.contains(selectedVersion)) {
+            return createSmartSelfHealingRegex(fullText, selectedVersion);
+        }
+        return createMultiPartRegex(fullText, selectedVersion);
     }
 }
