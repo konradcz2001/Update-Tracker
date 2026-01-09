@@ -27,7 +27,10 @@ import java.util.TimerTask;
 import java.util.Optional;
 import javafx.geometry.Pos;
 import javafx.geometry.Insets;
-import javafx.scene.layout.HBox;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Collections;
 
 public class MainController {
 
@@ -179,7 +182,7 @@ public class MainController {
         ProgressBar progressBar = new ProgressBar(0);
         progressBar.setPrefWidth(300);
 
-        Label statusLabel = new Label("Starting scan...");
+        Label statusLabel = new Label("Initializing parallel scan...");
         statusLabel.setPrefWidth(300);
 
         VBox content = new VBox(10, statusLabel, progressBar);
@@ -195,43 +198,70 @@ public class MainController {
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() {
-                int[] updatesFound = {0};
-                List<TrackedProgram> failedPrograms = new ArrayList<>();
+                // Thread-safe counters and lists
+                AtomicInteger updatesFound = new AtomicInteger(0);
+                AtomicInteger processedCount = new AtomicInteger(0);
+                // Synchronized list for collecting errors from multiple threads
+                List<TrackedProgram> failedPrograms = Collections.synchronizedList(new ArrayList<>());
+
                 int total = programList.size();
 
-                for (int i = 0; i < total; i++) {
+                // --- PARALLEL EXECUTION SETUP ---
+                // Create a thread pool (6 threads allows fast scanning without killing CPU)
+                ExecutorService executor = Executors.newFixedThreadPool(6);
+                List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+                for (TrackedProgram program : programList) {
                     if (isCancelled()) break;
 
-                    TrackedProgram program = programList.get(i);
+                    // Create an async task for each program
+                    CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                        if (isCancelled()) return;
 
-                    // Update UI message and progress
-                    updateMessage("Checking: " + program.getName());
-                    updateProgress(i, total);
+                        // Check update (Heavy work)
+                        boolean success = checkProgramUpdate(program);
 
-                    boolean success = checkProgramUpdate(program);
-
-                    if (success) {
-                        String curr = program.getCurrentVersion();
-                        String last = program.getLastDownloadedVersion();
-                        if (!curr.equals(last) && !curr.equals("N/A")) {
-                            updatesFound[0]++;
+                        // Update counters and logic
+                        if (success) {
+                            String curr = program.getCurrentVersion();
+                            String last = program.getLastDownloadedVersion();
+                            if (!curr.equals(last) && !curr.equals("N/A")) {
+                                updatesFound.incrementAndGet();
+                            }
+                        } else {
+                            System.err.println("Critical error for program: " + program.getName());
+                            failedPrograms.add(program);
                         }
-                    } else {
-                        System.err.println("Critical error for program: " + program.getName());
-                        failedPrograms.add(program);
-                    }
 
-                    // Small delay to make UI updates visible and smoother
-                    try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+                        // Safely update progress bar
+                        int current = processedCount.incrementAndGet();
+                        updateProgress(current, total);
+
+                        // Update message (throttle slightly to avoid UI spam)
+                        javafx.application.Platform.runLater(() ->
+                                statusLabel.setText("Scanned " + current + "/" + total + " (" + program.getName() + ")")
+                        );
+
+                    }, executor);
+
+                    futures.add(future);
                 }
 
-                // Set progress to 100% before finishing
+                // Wait for ALL tasks to finish
+                try {
+                    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+                } catch (Exception e) {
+                    if (!isCancelled()) e.printStackTrace();
+                } finally {
+                    executor.shutdownNow(); // Clean up threads
+                }
+
+                // Finalize UI
                 updateProgress(total, total);
-                updateMessage("Finalizing...");
+                updateMessage("Finalizing results...");
 
                 // 3. Show Results (on UI Thread)
                 javafx.application.Platform.runLater(() -> {
-                    // Close the progress window first
                     progressDialog.setResult(ButtonType.CANCEL);
                     progressDialog.close();
 
@@ -243,9 +273,14 @@ public class MainController {
                         alert.setHeaderText("Failed to check " + failedPrograms.size() + " programs");
 
                         StringBuilder sb = new StringBuilder("Could not check:\n");
-                        for (TrackedProgram p : failedPrograms) {
-                            sb.append("- ").append(p.getName()).append("\n");
+                        // Sort failed list because threads finish in random order
+                        synchronized (failedPrograms) {
+                            failedPrograms.sort((p1, p2) -> p1.getName().compareToIgnoreCase(p2.getName()));
+                            for (TrackedProgram p : failedPrograms) {
+                                sb.append("- ").append(p.getName()).append("\n");
+                            }
                         }
+
                         sb.append("\nDo you want to fix the first one now?");
                         alert.setContentText(sb.toString());
 
@@ -260,7 +295,7 @@ public class MainController {
                     } else {
                         Alert alert = new Alert(Alert.AlertType.INFORMATION);
                         alert.setTitle("Scan Completed");
-                        alert.setContentText("Scanning finished. Updates found: " + updatesFound[0]);
+                        alert.setContentText("Scanning finished. Updates found: " + updatesFound.get());
                         alert.showAndWait();
                     }
                 });
@@ -268,18 +303,16 @@ public class MainController {
             }
         };
 
-        // 3. Bind UI to Task
+        // 3. Bind UI
         progressBar.progressProperty().bind(task.progressProperty());
-        statusLabel.textProperty().bind(task.messageProperty());
+        // Note: We update label manually in the loop for better control in multithreading
 
-        // Handle Cancel button action
         progressDialog.setOnCloseRequest(e -> {
             if (task.isRunning()) {
                 task.cancel();
             }
         });
 
-        // 4. Run Logic
         Thread thread = new Thread(task);
         thread.setDaemon(true);
         thread.start();
