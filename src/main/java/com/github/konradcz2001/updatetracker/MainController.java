@@ -25,6 +25,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.Optional;
+import javafx.geometry.Pos;
+import javafx.geometry.Insets;
+import javafx.scene.layout.HBox;
 
 public class MainController {
 
@@ -168,14 +171,42 @@ public class MainController {
 
     @FXML
     private void onScanUpdatesClick() {
+        // 1. Prepare UI for Progress Dialog
+        Dialog<ButtonType> progressDialog = new Dialog<>();
+        progressDialog.setTitle("Scanning Updates");
+        progressDialog.setHeaderText("Checking program versions...");
+
+        ProgressBar progressBar = new ProgressBar(0);
+        progressBar.setPrefWidth(300);
+
+        Label statusLabel = new Label("Starting scan...");
+        statusLabel.setPrefWidth(300);
+
+        VBox content = new VBox(10, statusLabel, progressBar);
+        content.setPadding(new Insets(20));
+        content.setAlignment(Pos.CENTER);
+        progressDialog.getDialogPane().setContent(content);
+
+        // Add Cancel button
+        ButtonType cancelButtonType = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+        progressDialog.getDialogPane().getButtonTypes().add(cancelButtonType);
+
+        // 2. Create the Task
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() {
                 int[] updatesFound = {0};
                 List<TrackedProgram> failedPrograms = new ArrayList<>();
+                int total = programList.size();
 
-                for (TrackedProgram program : programList) {
+                for (int i = 0; i < total; i++) {
                     if (isCancelled()) break;
+
+                    TrackedProgram program = programList.get(i);
+
+                    // Update UI message and progress
+                    updateMessage("Checking: " + program.getName());
+                    updateProgress(i, total);
 
                     boolean success = checkProgramUpdate(program);
 
@@ -190,23 +221,34 @@ public class MainController {
                         failedPrograms.add(program);
                     }
 
+                    // Small delay to make UI updates visible and smoother
                     try { Thread.sleep(200); } catch (InterruptedException ignored) {}
                 }
 
+                // Set progress to 100% before finishing
+                updateProgress(total, total);
+                updateMessage("Finalizing...");
+
+                // 3. Show Results (on UI Thread)
                 javafx.application.Platform.runLater(() -> {
+                    // Close the progress window first
+                    progressDialog.setResult(ButtonType.CANCEL);
+                    progressDialog.close();
+
+                    if (isCancelled()) return;
+
                     if (!failedPrograms.isEmpty()) {
                         Alert alert = new Alert(Alert.AlertType.WARNING);
                         alert.setTitle("Scan Completed with Errors");
                         alert.setHeaderText("Failed to check " + failedPrograms.size() + " programs");
 
-                        StringBuilder content = new StringBuilder("Could not check:\n");
+                        StringBuilder sb = new StringBuilder("Could not check:\n");
                         for (TrackedProgram p : failedPrograms) {
-                            content.append("- ").append(p.getName()).append("\n");
+                            sb.append("- ").append(p.getName()).append("\n");
                         }
-                        content.append("\nDo you want to fix the first one now?");
-                        alert.setContentText(content.toString());
+                        sb.append("\nDo you want to fix the first one now?");
+                        alert.setContentText(sb.toString());
 
-                        // Logic to show failed programs and ask to fix
                         ButtonType fixButton = new ButtonType("Fix First Failed");
                         ButtonType closeButton = new ButtonType("Close", ButtonBar.ButtonData.CANCEL_CLOSE);
                         alert.getButtonTypes().setAll(fixButton, closeButton);
@@ -225,7 +267,24 @@ public class MainController {
                 return null;
             }
         };
-        new Thread(task).start();
+
+        // 3. Bind UI to Task
+        progressBar.progressProperty().bind(task.progressProperty());
+        statusLabel.textProperty().bind(task.messageProperty());
+
+        // Handle Cancel button action
+        progressDialog.setOnCloseRequest(e -> {
+            if (task.isRunning()) {
+                task.cancel();
+            }
+        });
+
+        // 4. Run Logic
+        Thread thread = new Thread(task);
+        thread.setDaemon(true);
+        thread.start();
+
+        progressDialog.show();
     }
 
     private boolean checkProgramUpdate(TrackedProgram program) {
