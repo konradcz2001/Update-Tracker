@@ -177,10 +177,6 @@ public class MainController {
         }
     }
 
-    @FXML
-    private void onEditNameClick() {
-
-    }
 
     @FXML
     private void onScanUpdatesClick() {
@@ -296,12 +292,54 @@ public class MainController {
         dialog.setContentText("Program Name:");
 
         dialog.showAndWait().ifPresent(name -> {
-            if (!name.trim().isEmpty()) {
-                TrackedProgram p = new TrackedProgram(name);
+            String trimmedName = name.trim();
+            if (!trimmedName.isEmpty()) {
+                if (isNameDuplicate(trimmedName)) {
+                    showError("Name already exists", "A program with this name is already on the list.");
+                    return;
+                }
+                TrackedProgram p = new TrackedProgram(trimmedName);
                 programList.add(p);
                 switchToEditor(p);
             }
         });
+    }
+
+    @FXML
+    private void onEditNameClick() {
+        TrackedProgram selected = programTable.getSelectionModel().getSelectedItem();
+        if (selected == null) return;
+
+        TextInputDialog dialog = new TextInputDialog(selected.getName());
+        dialog.setTitle("Edit Program Name");
+        dialog.setHeaderText("Rename " + selected.getName());
+        dialog.setContentText("New Name:");
+
+        dialog.showAndWait().ifPresent(newName -> {
+            String trimmedName = newName.trim();
+            if (!trimmedName.isEmpty() && !trimmedName.equals(selected.getName())) {
+                if (isNameDuplicate(trimmedName)) {
+                    showError("Name already exists", "A program with this name is already on the list.");
+                    return;
+                }
+                selected.setName(trimmedName);
+                programTable.refresh();
+                storageService.saveData(programList);
+            }
+        });
+    }
+
+    private boolean isNameDuplicate(String name) {
+        return programList.stream()
+                .anyMatch(p -> p.getName().equalsIgnoreCase(name));
+    }
+
+    private void showError(String title, String content) {
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle("Error");
+        alert.setHeaderText(title);
+        alert.setContentText(content);
+        alert.showAndWait();
     }
 
     @FXML
