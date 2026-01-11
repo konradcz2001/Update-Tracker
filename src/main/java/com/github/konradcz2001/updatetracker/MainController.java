@@ -16,6 +16,7 @@ import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.web.WebView;
+import javafx.beans.binding.Bindings;
 
 import java.util.Comparator;
 import java.util.List;
@@ -47,6 +48,11 @@ public class MainController {
     @FXML private Label editorProgramNameLabel;
     @FXML private Button selectElementBtn;
     @FXML private Button selectDownloadBtn;
+
+    @FXML private Button btnEditName;
+    @FXML private Button btnDelete;
+    @FXML private Button btnConfigure;
+    @FXML private Button btnDownload;
 
     // --- Data ---
     private final ObservableList<TrackedProgram> programList = FXCollections.observableArrayList(
@@ -83,11 +89,28 @@ public class MainController {
         colCurrentVersion.setCellValueFactory(cellData -> cellData.getValue().currentVersionProperty());
 
         SortedList<TrackedProgram> sortedList = new SortedList<>(programList);
-        sortedList.setComparator(createProgramComparator());
+
+        // Bind SortedList comparator to TableView comparator
+        sortedList.comparatorProperty().bind(programTable.comparatorProperty());
 
         programTable.setItems(sortedList);
         programTable.setPlaceholder(new Label("No programs tracked yet. Click 'Add Program'."));
         programTable.setRowFactory(this::createRowFactory);
+
+        FXCollections.sort(programList, createProgramComparator());
+
+        programTable.getSortOrder().addListener((javafx.collections.ListChangeListener<TableColumn<TrackedProgram, ?>>) c -> {
+            if (programTable.getSortOrder().isEmpty()) {
+                FXCollections.sort(programList, createProgramComparator());
+            }
+        });
+
+        // Disable buttons when no selection
+        var selectionModel = programTable.getSelectionModel();
+        btnEditName.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
+        btnDelete.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
+        btnConfigure.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
+        btnDownload.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
     }
 
     private Comparator<TrackedProgram> createProgramComparator() {
@@ -110,33 +133,53 @@ public class MainController {
             @Override
             protected void updateItem(TrackedProgram item, boolean empty) {
                 super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setStyle("");
-                } else {
-                    String curr = item.getCurrentVersion();
-                    String last = item.getLastDownloadedVersion();
-                    boolean isOutdated = !curr.equals(last) && !curr.equals("N/A");
-                    setStyle(isOutdated ? "-fx-background-color: #ff8484;" : "");
-                }
+                updateRowStyle(this);
             }
         };
 
+        row.selectedProperty().addListener((obs, wasSelected, isSelected) -> updateRowStyle(row));
+
         row.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, event -> {
-            if (!row.isEmpty() && event.isPrimaryButtonDown() && event.getClickCount() == 1) {
-                if (programTable.getSelectionModel().getSelectedItem() == row.getItem()) {
+            if (!row.isEmpty() && event.getButton() == javafx.scene.input.MouseButton.PRIMARY) {
+                if (row.isSelected()) {
                     programTable.getSelectionModel().clearSelection();
-                    event.consume();
+                } else {
+                    programTable.getSelectionModel().select(row.getItem());
                 }
+                event.consume();
             }
         });
+
         return row;
+    }
+
+    private void updateRowStyle(TableRow<TrackedProgram> row) {
+        if (row.isEmpty() || row.getItem() == null) {
+            row.setStyle("");
+        } else {
+            if (row.isSelected()) {
+                row.setStyle("");
+            } else {
+                TrackedProgram item = row.getItem();
+                String curr = item.getCurrentVersion();
+                String last = item.getLastDownloadedVersion();
+                boolean isOutdated = !curr.equals(last) && !curr.equals("N/A");
+                row.setStyle(isOutdated ? "-fx-background-color: #ff8484;" : "");
+            }
+        }
     }
 
     private void loadData() {
         List<TrackedProgram> loaded = storageService.loadData();
         if (loaded != null) {
             programList.setAll(loaded);
+            FXCollections.sort(programList, createProgramComparator());
         }
+    }
+
+    @FXML
+    private void onEditNameClick() {
+
     }
 
     @FXML
@@ -163,6 +206,7 @@ public class MainController {
                 statusLabel,
                 () -> programTable.refresh(), // Update Callback
                 () -> {                       // Finished Callback
+                    FXCollections.sort(programList, createProgramComparator());
                     progressDialog.setResult(ButtonType.CANCEL);
                     progressDialog.close();
                 }
