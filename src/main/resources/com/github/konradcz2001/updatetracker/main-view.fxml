@@ -29,8 +29,9 @@
                 <columns>
                     <TableColumn fx:id="colName" text="Program Name" prefWidth="200"/>
                     <TableColumn fx:id="colLastVersion" text="My Version" prefWidth="120"/>
-                    <TableColumn fx:id="colDate" text="Checked Date" prefWidth="120"/>
+                    <TableColumn fx:id="colDateOld" text="Old Ver. Date" prefWidth="100"/>
                     <TableColumn fx:id="colCurrentVersion" text="Online Version" prefWidth="120"/>
+                    <TableColumn fx:id="colDateNew" text="New Ver. Date" prefWidth="100"/>
                 </columns>
                 <columnResizePolicy>
                     <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>

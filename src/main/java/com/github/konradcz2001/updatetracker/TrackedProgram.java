@@ -10,7 +10,8 @@ public class TrackedProgram {
     private final StringProperty name;
     private final StringProperty currentVersion;
     private final StringProperty lastDownloadedVersion;
-    private final StringProperty lastCheckDate;
+    private final StringProperty dateFoundOld;
+    private final StringProperty dateFoundNew;
 
     private String url;
     private String cssSelector;
@@ -22,7 +23,8 @@ public class TrackedProgram {
         this.name = new SimpleStringProperty("");
         this.currentVersion = new SimpleStringProperty("N/A");
         this.lastDownloadedVersion = new SimpleStringProperty("N/A");
-        this.lastCheckDate = new SimpleStringProperty(LocalDate.now().toString());
+        this.dateFoundOld = new SimpleStringProperty("-");
+        this.dateFoundNew = new SimpleStringProperty(LocalDate.now().toString());
         this.url = "";
         this.cssSelector = "";
         this.versionRegex = "";
@@ -32,7 +34,8 @@ public class TrackedProgram {
         this.name = new SimpleStringProperty(name);
         this.currentVersion = new SimpleStringProperty("N/A");
         this.lastDownloadedVersion = new SimpleStringProperty("N/A");
-        this.lastCheckDate = new SimpleStringProperty(LocalDate.now().toString());
+        this.dateFoundOld = new SimpleStringProperty("-");
+        this.dateFoundNew = new SimpleStringProperty(LocalDate.now().toString());
         this.url = "";
         this.cssSelector = "";
         this.versionRegex = "";
@@ -49,8 +52,11 @@ public class TrackedProgram {
     public String getLastDownloadedVersion() { return lastDownloadedVersion.get(); }
     public void setLastDownloadedVersion(String version) { this.lastDownloadedVersion.set(version); }
 
-    public String getLastCheckDate() { return lastCheckDate.get(); }
-    public void setLastCheckDate(String date) { this.lastCheckDate.set(date); }
+    public String getDateFoundOld() { return dateFoundOld.get(); }
+    public void setDateFoundOld(String date) { this.dateFoundOld.set(date); }
+
+    public String getDateFoundNew() { return dateFoundNew.get(); }
+    public void setDateFoundNew(String date) { this.dateFoundNew.set(date); }
 
     public String getUrl() { return url; }
     public void setUrl(String url) { this.url = url; }
@@ -69,5 +75,6 @@ public class TrackedProgram {
     @JsonIgnore public StringProperty nameProperty() { return name; }
     @JsonIgnore public StringProperty currentVersionProperty() { return currentVersion; }
     @JsonIgnore public StringProperty lastDownloadedVersionProperty() { return lastDownloadedVersion; }
-    @JsonIgnore public StringProperty lastCheckDateProperty() { return lastCheckDate; }
+    @JsonIgnore public StringProperty dateFoundOldProperty() { return dateFoundOld; }
+    @JsonIgnore public StringProperty dateFoundNewProperty() { return dateFoundNew; }
 }

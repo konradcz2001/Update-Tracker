@@ -207,8 +207,13 @@ public class ScanService {
 
                     String versionToSave = finalVersion;
                     Platform.runLater(() -> {
+                        // Check if version actually changed to update dates logic
+                        if (!versionToSave.equals(program.getCurrentVersion())) {
+                            program.setDateFoundOld(program.getDateFoundNew());
+                            program.setDateFoundNew(java.time.LocalDate.now().toString());
+                        }
+
                         program.setCurrentVersion(versionToSave);
-                        program.setLastCheckDate(java.time.LocalDate.now().toString());
                         if (onUpdateCallback != null) onUpdateCallback.run();
                     });
                     System.out.println(">>> SUCCESS: " + program.getName() + " -> " + versionToSave);

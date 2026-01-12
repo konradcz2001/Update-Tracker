@@ -39,7 +39,8 @@ public class MainController {
     @FXML private TableView<TrackedProgram> programTable;
     @FXML private TableColumn<TrackedProgram, String> colName;
     @FXML private TableColumn<TrackedProgram, String> colLastVersion;
-    @FXML private TableColumn<TrackedProgram, String> colDate;
+    @FXML private TableColumn<TrackedProgram, String> colDateOld;
+    @FXML private TableColumn<TrackedProgram, String> colDateNew;
     @FXML private TableColumn<TrackedProgram, String> colCurrentVersion;
 
     @FXML private BorderPane editorView;
@@ -85,7 +86,8 @@ public class MainController {
     private void setupTable() {
         colName.setCellValueFactory(cellData -> cellData.getValue().nameProperty());
         colLastVersion.setCellValueFactory(cellData -> cellData.getValue().lastDownloadedVersionProperty());
-        colDate.setCellValueFactory(cellData -> cellData.getValue().lastCheckDateProperty());
+        colDateOld.setCellValueFactory(cellData -> cellData.getValue().dateFoundOldProperty());
+        colDateNew.setCellValueFactory(cellData -> cellData.getValue().dateFoundNewProperty());
         colCurrentVersion.setCellValueFactory(cellData -> cellData.getValue().currentVersionProperty());
 
         SortedList<TrackedProgram> sortedList = new SortedList<>(programList);
