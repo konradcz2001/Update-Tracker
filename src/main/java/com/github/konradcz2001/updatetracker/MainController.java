@@ -113,7 +113,7 @@ public class MainController {
         btnConfigure.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
         btnDownload.disableProperty().bind(Bindings.createBooleanBinding(() -> {
             TrackedProgram p = selectionModel.getSelectedItem();
-            return p == null || "N/A".equals(p.getCurrentVersion());
+            return p == null || "N/A".equals(p.getCurrentVersion()) || p.getDownloadSelector() == null || p.getDownloadSelector().isEmpty();
         }, selectionModel.selectedItemProperty()));
     }
 
@@ -229,6 +229,11 @@ public class MainController {
     @FXML
     private void onSelectDownloadClick() {
         browserManager.toggleDownloadSelectionMode();
+    }
+
+    @FXML
+    private void onSelectElementClick() {
+        browserManager.toggleVersionSelectionMode();
     }
 
     @FXML

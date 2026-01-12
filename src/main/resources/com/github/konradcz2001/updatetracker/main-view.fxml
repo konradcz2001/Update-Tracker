@@ -77,7 +77,7 @@
         <bottom>
             <HBox spacing="10" alignment="CENTER_RIGHT" style="-fx-padding: 10; -fx-background-color: #f0f0f0;">
                 <Label text="Navigate to page, then click below:" textFill="#666666"/>
-                <Button text="Select Version Element" fx:id="selectElementBtn"/>
+                <Button text="Select Version Element" fx:id="selectElementBtn" onAction="#onSelectElementClick"/>
                 <Button text="Select Download Link" fx:id="selectDownloadBtn" onAction="#onSelectDownloadClick"/>
             </HBox>
         </bottom>

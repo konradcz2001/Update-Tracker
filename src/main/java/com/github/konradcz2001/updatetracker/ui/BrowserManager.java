@@ -9,7 +9,6 @@ import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebHistory;
 import javafx.scene.web.WebView;
 import netscape.javascript.JSObject;
-
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -22,7 +21,7 @@ public class BrowserManager {
     private final Button selectDownloadBtn;
     private final Consumer<Void> onSaveCallback;
 
-    private boolean isSelectionMode = false;
+    private boolean isVersionSelectionMode = false;
     private boolean isDownloadSelectionMode = false;
     private TrackedProgram currentProgram;
 
@@ -56,7 +55,7 @@ public class BrowserManager {
                 JSObject window = (JSObject) engine.executeScript("window");
                 window.setMember("javaApp", bridge);
 
-                if (isSelectionMode || isDownloadSelectionMode) {
+                if (isVersionSelectionMode || isDownloadSelectionMode) {
                     injectSelectorScript();
                 }
             }
@@ -73,19 +72,22 @@ public class BrowserManager {
         if (url == null || url.trim().isEmpty()) {
             engine.loadContent("");
             selectElementBtn.setDisable(true);
+            selectDownloadBtn.setDisable(true);
         } else {
             if (!url.startsWith("http")) url = "https://" + url;
             engine.load(url);
             selectElementBtn.setDisable(false);
+            selectDownloadBtn.setDisable(false);
         }
     }
 
     public void loadUrl(String url) {
         if (url != null && !url.trim().isEmpty()) {
             if (!url.startsWith("http")) url = "https://" + url;
-            if (isSelectionMode) toggleSelectionMode();
+            if (isVersionSelectionMode) toggleVersionSelectionMode();
             engine.load(url);
             selectElementBtn.setDisable(false);
+            selectDownloadBtn.setDisable(false);
         }
     }
 
@@ -103,13 +105,16 @@ public class BrowserManager {
         engine.reload();
     }
 
-    public void toggleSelectionMode() {
-        isSelectionMode = !isSelectionMode;
-        if (isSelectionMode) {
-            selectElementBtn.setText("Exit Selection Mode");
+    public void toggleVersionSelectionMode() {
+        isVersionSelectionMode = !isVersionSelectionMode;
+        if (isVersionSelectionMode) {
+            isDownloadSelectionMode = false;
+            selectElementBtn.setText("Exit Version Selection");
+            selectDownloadBtn.setDisable(true);
             injectSelectorScript();
         } else {
             selectElementBtn.setText("Select Version Element");
+            selectDownloadBtn.setDisable(false);
             engine.reload();
         }
     }
@@ -117,7 +122,7 @@ public class BrowserManager {
     public void toggleDownloadSelectionMode() {
         isDownloadSelectionMode = !isDownloadSelectionMode;
         if (isDownloadSelectionMode) {
-            isSelectionMode = false;
+            isVersionSelectionMode = false;
             selectDownloadBtn.setText("Exit Link Selection");
             selectElementBtn.setDisable(true);
             injectSelectorScript();
@@ -129,7 +134,7 @@ public class BrowserManager {
     }
 
     public void resetModes() {
-        if (isSelectionMode) toggleSelectionMode();
+        if (isVersionSelectionMode) toggleVersionSelectionMode();
         if (isDownloadSelectionMode) toggleDownloadSelectionMode();
     }
 
@@ -140,8 +145,19 @@ public class BrowserManager {
     private void injectSelectorScript() {
         String script = """
         (function() {
-            var lastTarget = null;
-            var lastOutline = '';
+            if (!document.getElementById('tracker-style')) {
+                var style = document.createElement('style');
+                style.id = 'tracker-style';
+                style.innerHTML = '.tracker-highlight { outline: 3px solid red !important; cursor: crosshair !important; box-shadow: 0 0 5px rgba(255,0,0,0.5); }';
+                document.head.appendChild(style);
+            }
+
+            function clearHighlights() {
+                var highlighted = document.querySelectorAll('.tracker-highlight');
+                for (var i = 0; i < highlighted.length; i++) {
+                    highlighted[i].classList.remove('tracker-highlight');
+                }
+            }
 
             function getCssPath(el) {
                 if (!(el instanceof Element)) return;
@@ -149,13 +165,13 @@ public class BrowserManager {
 
                 var path = [];
                 var current = el;
-                
+        
                 while (current && current.nodeType === Node.ELEMENT_NODE) {
                     var selector = current.nodeName.toLowerCase();
                     if (current.id) {
                         selector = '#' + current.id;
                         path.unshift(selector);
-                        break; 
+                        break;
                     }
                     var className = current.getAttribute("class");
                     if (className && className.trim().length > 0) {
@@ -178,34 +194,33 @@ public class BrowserManager {
 
             document.addEventListener('mouseover', function(e) {
                 if (!e.ctrlKey) {
-                    if (lastTarget) {
-                        lastTarget.style.outline = lastOutline;
-                        lastTarget = null;
-                    }
+                    clearHighlights();
                     return;
                 }
-                var target = e.target;
-                if (target === lastTarget) return;
-
-                if (lastTarget) lastTarget.style.outline = lastOutline;
-                lastTarget = target;
-                lastOutline = target.style.outline;
-                target.style.outline = "3px solid red";
+        
+                clearHighlights();
+                e.target.classList.add('tracker-highlight');
                 e.stopPropagation();
             }, true);
+        
+            document.addEventListener('keyup', function(e) {
+                if (e.key === 'Control') clearHighlights();
+            });
 
             document.addEventListener('click', function(e) {
                 if (!e.ctrlKey) return;
                 e.preventDefault();
                 e.stopPropagation();
-                
+        
                 var target = e.target;
                 if(!target) return false;
 
                 var cssSelector = getCssPath(target);
-                cssSelector = cssSelector.replace(/div\\./g, '.'); // clean up
+                if (cssSelector) {
+                    cssSelector = cssSelector.replace(/div\\./g, '.');
+                }
                 var textContent = (target.innerText || target.textContent || "").replace(/\\s+/g, ' ').trim();
-                
+        
                 if(window.javaApp) {
                     window.javaApp.onElementSelected(cssSelector, textContent);
                 }
@@ -276,7 +291,7 @@ public class BrowserManager {
                         Alert alert = new Alert(Alert.AlertType.INFORMATION, "Version saved successfully!");
                         alert.setHeaderText(null);
                         alert.showAndWait();
-                        toggleSelectionMode();
+                        toggleVersionSelectionMode();
                     });
                 }
             });
