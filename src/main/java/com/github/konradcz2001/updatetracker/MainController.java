@@ -6,6 +6,7 @@ import com.github.konradcz2001.updatetracker.service.ScraperService;
 import com.github.konradcz2001.updatetracker.service.StorageService;
 import com.github.konradcz2001.updatetracker.ui.BrowserManager;
 import javafx.application.Platform;
+import javafx.beans.binding.Bindings;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.SortedList;
@@ -110,7 +111,10 @@ public class MainController {
         btnEditName.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
         btnDelete.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
         btnConfigure.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
-        btnDownload.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
+        btnDownload.disableProperty().bind(Bindings.createBooleanBinding(() -> {
+            TrackedProgram p = selectionModel.getSelectedItem();
+            return p == null || "N/A".equals(p.getCurrentVersion());
+        }, selectionModel.selectedItemProperty()));
     }
 
     private Comparator<TrackedProgram> createProgramComparator() {
