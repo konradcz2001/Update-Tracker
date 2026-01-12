@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.github.konradcz2001"
-version = "1.0-SNAPSHOT"
+version = "1.1.0"
 
 repositories {
     mavenCentral()
@@ -50,10 +50,39 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
+tasks.processResources {
+    // Replace ${project.version} in app.properties with the actual Gradle version
+    filesMatching("**/app.properties") {
+        expand("project" to project)
+    }
+}
+
 jlink {
-    imageZip.set(layout.buildDirectory.file("/distributions/app-${javafx.platform.classifier}.zip"))
-    options.set(listOf("--strip-debug", "--compress", "2", "--no-header-files", "--no-man-pages"))
+    imageZip.set(layout.buildDirectory.file("/distributions/UpdateTracker-${javafx.platform.classifier}.zip"))
+    options.set(listOf("--strip-debug", "--compress", "2", "--no-header-files", "--no-man-pages", "--add-modules", "jdk.crypto.ec,java.logging"))
+
     launcher {
-        name = "app"
+        name = "UpdateTracker"
+        noConsole = true
+    }
+
+    jpackage {
+        imageName = "UpdateTracker"
+        installerName = "UpdateTrackerSetup"
+        appVersion = "1.1.0"
+
+        installerType = "msi"
+
+        icon = "src/main/resources/app_icon.ico"
+
+        if (org.gradle.internal.os.OperatingSystem.current().isWindows()) {
+            installerOptions.add("--win-dir-chooser")
+            installerOptions.add("--win-shortcut")
+            installerOptions.add("--win-menu")
+
+            installerOptions.add("--win-menu-group")
+            installerOptions.add("Update Tracker")
+
+        }
     }
 }
