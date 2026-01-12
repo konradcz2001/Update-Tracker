@@ -19,6 +19,7 @@ public class BrowserManager {
     private final TextField urlField;
     private final Button selectElementBtn;
     private final Button selectDownloadBtn;
+    private final Label instructionLabel;
     private final Consumer<Void> onSaveCallback;
 
     private boolean isVersionSelectionMode = false;
@@ -28,12 +29,13 @@ public class BrowserManager {
     // Strong reference to bridge to prevent GC
     private final JavaBridge bridge = new JavaBridge();
 
-    public BrowserManager(WebView webView, TextField urlField, Button selectElementBtn, Button selectDownloadBtn, Consumer<Void> onSaveCallback) {
+    public BrowserManager(WebView webView, TextField urlField, Button selectElementBtn, Button selectDownloadBtn, Label instructionLabel, Consumer<Void> onSaveCallback) {
         this.webView = webView;
         this.engine = webView.getEngine();
         this.urlField = urlField;
         this.selectElementBtn = selectElementBtn;
         this.selectDownloadBtn = selectDownloadBtn;
+        this.instructionLabel = instructionLabel;
         this.onSaveCallback = onSaveCallback;
 
         initialize();
@@ -111,11 +113,14 @@ public class BrowserManager {
             isDownloadSelectionMode = false;
             selectElementBtn.setText("Exit Version Selection");
             selectDownloadBtn.setDisable(true);
+            instructionLabel.setText("Hold CTRL and click the version number.");
+            instructionLabel.setStyle("-fx-text-fill: #000000; -fx-font-weight: bold;");
             injectSelectorScript();
         } else {
             selectElementBtn.setText("Select Version Element");
             selectDownloadBtn.setDisable(false);
-            engine.reload();
+            instructionLabel.setText("Navigate to page, then click below:");
+            instructionLabel.setStyle("-fx-text-fill: #666666;");
         }
     }
 
@@ -125,11 +130,14 @@ public class BrowserManager {
             isVersionSelectionMode = false;
             selectDownloadBtn.setText("Exit Link Selection");
             selectElementBtn.setDisable(true);
+            instructionLabel.setText("Hold CTRL and click the download link.");
+            instructionLabel.setStyle("-fx-text-fill: #000000; -fx-font-weight: bold;");
             injectSelectorScript();
         } else {
             selectDownloadBtn.setText("Select Download Link");
             selectElementBtn.setDisable(false);
-            engine.reload();
+            instructionLabel.setText("Navigate to page, then click below:");
+            instructionLabel.setStyle("-fx-text-fill: #666666;");
         }
     }
 
@@ -175,8 +183,12 @@ public class BrowserManager {
                     }
                     var className = current.getAttribute("class");
                     if (className && className.trim().length > 0) {
+                        // Filter out 'tracker-highlight' so it doesn't get saved in the selector
                         var validClasses = className.split(/\\s+/).filter(function(c) {
-                            return c.length > 2 && !c.startsWith('_') && !c.startsWith('rs-');
+                            return c.length > 2 &&
+                                   !c.startsWith('_') &&
+                                   !c.startsWith('rs-') &&
+                                   c !== 'tracker-highlight';
                         });
                         if (validClasses.length > 0) {
                             selector += '.' + validClasses.join('.');
@@ -239,13 +251,50 @@ public class BrowserManager {
         public void onElementSelected(String cssSelector, String textContent) {
             Platform.runLater(() -> {
                 if (isDownloadSelectionMode && currentProgram != null) {
-                    currentProgram.setDownloadSelector(cssSelector);
-                    onSaveCallback.accept(null);
 
-                    Alert alert = new Alert(Alert.AlertType.INFORMATION, "Download link saved!");
-                    alert.setHeaderText(null);
-                    alert.showAndWait();
-                    toggleDownloadSelectionMode();
+                    String currentPageUrl = engine.getLocation();
+
+                    Dialog<String> dialog = new Dialog<>();
+                    dialog.setTitle("Download Configuration");
+                    dialog.setHeaderText("Download Element Selected");
+
+                    ButtonType saveButtonType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
+                    dialog.getDialogPane().getButtonTypes().addAll(saveButtonType, ButtonType.CANCEL);
+
+                    VBox content = new VBox(10);
+                    Label label = new Label("Please confirm the page URL where this element is located.\n" +
+                            "If the page URL changes with the version, use {version} placeholder.");
+
+                    TextField urlField = new TextField(currentPageUrl);
+                    urlField.setPromptText("https://example.com/v{version}/downloads");
+                    urlField.setPrefWidth(450);
+
+                    content.getChildren().addAll(label, urlField);
+                    dialog.getDialogPane().setContent(content);
+                    Platform.runLater(urlField::requestFocus);
+
+                    dialog.setResultConverter(btn -> btn == saveButtonType ? urlField.getText() : null);
+                    Optional<String> result = dialog.showAndWait();
+
+                    result.ifPresent(inputPageUrl -> {
+                        String finalPageUrl = inputPageUrl.trim();
+
+                        currentProgram.setDownloadSelector(cssSelector);
+
+                        if (!finalPageUrl.isEmpty()) {
+                            currentProgram.setDownloadUrl(finalPageUrl);
+                        } else {
+                            currentProgram.setDownloadUrl(null);
+                        }
+
+                        onSaveCallback.accept(null);
+
+                        Alert info = new Alert(Alert.AlertType.INFORMATION, "Configuration saved!\nPage: " + (finalPageUrl.isEmpty() ? "(Default)" : finalPageUrl));
+                        info.setHeaderText(null);
+                        info.showAndWait();
+
+                        toggleDownloadSelectionMode();
+                    });
 
                 } else if (currentProgram != null) {
                     String safeText = (textContent != null) ? textContent.trim() : "";

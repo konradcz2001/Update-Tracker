@@ -19,7 +19,7 @@
     <BorderPane fx:id="dashboardView">
         <top>
             <HBox spacing="10" alignment="CENTER_LEFT" style="-fx-padding: 10; -fx-background-color: #f4f4f4;">
-                <Label text="Software Update Tracker" style="-fx-font-size: 18px; -fx-font-weight: bold;"/>
+                <Label text="Update Tracker" style="-fx-font-size: 18px; -fx-font-weight: bold;"/>
                 <padding><Insets bottom="10" left="10" right="10" top="10"/></padding>
             </HBox>
         </top>
@@ -41,6 +41,7 @@
 
         <bottom>
             <HBox spacing="10" alignment="CENTER_RIGHT" style="-fx-padding: 10;">
+                <Button text="?" onAction="#onAboutClick" style="-fx-min-width: 30px;"/>
                 <Button text="Add Program" onAction="#onAddProgramClick"/>
                 <Button fx:id="btnEditName" text="Edit Name" onAction="#onEditNameClick"/>
                 <Button fx:id="btnDelete" text="Delete Selected" onAction="#onDeleteProgramClick"/>
@@ -76,7 +77,7 @@
 
         <bottom>
             <HBox spacing="10" alignment="CENTER_RIGHT" style="-fx-padding: 10; -fx-background-color: #f0f0f0;">
-                <Label text="Navigate to page, then click below:" textFill="#666666"/>
+                <Label fx:id="instructionLabel" text="Navigate to page, then click below:" textFill="#666666"/>
                 <Button text="Select Version Element" fx:id="selectElementBtn" onAction="#onSelectElementClick"/>
                 <Button text="Select Download Link" fx:id="selectDownloadBtn" onAction="#onSelectDownloadClick"/>
             </HBox>

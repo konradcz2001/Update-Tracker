@@ -1,6 +1,7 @@
 package com.github.konradcz2001.updatetracker.service;
 
 import javafx.concurrent.Task;
+
 import java.io.File;
 import java.io.InputStream;
 import java.net.URI;
@@ -53,5 +54,24 @@ public class DownloadService {
         }
 
         return proposedName;
+    }
+
+    /**
+     * Generates the final download URL based on the template and version.
+     * * @param urlTemplate The URL stored in the program (e.g., "https://site.com/app-{version}.exe")
+     * @param version The detected version string (e.g., "1.5.0")
+     * @return The runnable download link
+     */
+    public String resolveDownloadUrl(String urlTemplate, String version) {
+        if (urlTemplate == null || urlTemplate.isEmpty()) {
+            return null;
+        }
+        // Check if the URL contains the placeholder marker
+        if (urlTemplate.contains("{version}")) {
+            // Replace marker with the actual version number
+            return urlTemplate.replace("{version}", version);
+        }
+        // If no marker, return the static URL as is
+        return urlTemplate;
     }
 }

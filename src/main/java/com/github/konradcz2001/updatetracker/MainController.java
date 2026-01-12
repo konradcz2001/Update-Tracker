@@ -20,6 +20,7 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.web.WebView;
 import javafx.stage.FileChooser;
+
 import java.io.File;
 import java.util.Comparator;
 import java.util.List;
@@ -48,6 +49,8 @@ public class MainController {
     @FXML private Label editorProgramNameLabel;
     @FXML private Button selectElementBtn;
     @FXML private Button selectDownloadBtn;
+    @FXML private TextField downloadUrlField;
+    @FXML private Label instructionLabel;
 
     @FXML private Button btnEditName;
     @FXML private Button btnDelete;
@@ -72,6 +75,7 @@ public class MainController {
                 urlField,
                 selectElementBtn,
                 selectDownloadBtn,
+                instructionLabel,
                 (Void) -> storageService.saveData(programList) // Callback on save
         );
 
@@ -80,6 +84,16 @@ public class MainController {
 
         // Save data whenever the list changes
         programList.addListener((javafx.collections.ListChangeListener<TrackedProgram>) c -> storageService.saveData(programList));
+
+        // Save download URL when text changes
+        if (downloadUrlField != null) {
+            downloadUrlField.textProperty().addListener((obs, oldVal, newVal) -> {
+                if (currentlyEditingProgram != null) {
+                    currentlyEditingProgram.setDownloadUrl(newVal);
+                    storageService.saveData(programList);
+                }
+            });
+        }
     }
 
     private void setupTable() {
@@ -246,42 +260,83 @@ public class MainController {
         }
         else if (selected.getUrl() != null && !selected.getUrl().isEmpty()) {
             performInAppDownload(selected.getUrl(), selected.getName());
+        } else {
+            handleDownloadError(selected);
         }
         programTable.requestFocus();
     }
 
     private void resolveAndDownload(TrackedProgram program) {
-        String mainUrl = program.getUrl();
-        if (mainUrl == null || mainUrl.isEmpty()) return;
-        if (!mainUrl.startsWith("http")) mainUrl = "https://" + mainUrl;
+        String targetPageUrl = program.getUrl();
 
-        browserManager.getEngine().load(mainUrl);
+        if (program.getDownloadUrl() != null && !program.getDownloadUrl().isEmpty()) {
+            String version = program.getCurrentVersion();
+            if ("N/A".equals(version)) version = "";
+            targetPageUrl = downloadService.resolveDownloadUrl(program.getDownloadUrl(), version);
+        }
+
+        if (targetPageUrl == null || targetPageUrl.isEmpty()) return;
+        if (!targetPageUrl.startsWith("http")) targetPageUrl = "https://" + targetPageUrl;
+
+        System.out.println("Navigating to download page: " + targetPageUrl);
+
+        browserManager.getEngine().load(targetPageUrl);
+
         browserManager.getEngine().getLoadWorker().stateProperty().addListener(new javafx.beans.value.ChangeListener<>() {
             @Override
             public void changed(javafx.beans.value.ObservableValue<? extends Worker.State> obs, Worker.State oldState, Worker.State newState) {
                 if (newState == Worker.State.SUCCEEDED) {
                     browserManager.getEngine().getLoadWorker().stateProperty().removeListener(this);
-                    try {
-                        String selector = program.getDownloadSelector();
-                        String script = "var el = document.querySelector('" + selector.replace("'", "\\'") + "');" +
-                                "el ? el.href : '';";
-                        Object result = browserManager.getEngine().executeScript(script);
-                        String dynamicLink = (result != null) ? result.toString() : "";
 
-                        if (!dynamicLink.isEmpty()) {
-                            performInAppDownload(dynamicLink, program.getName());
-                        } else {
-                            handleDownloadError(program);
+                    new java.util.Timer().schedule(new java.util.TimerTask() {
+                        @Override
+                        public void run() {
+                            Platform.runLater(() -> executeSelectorLogic(program));
                         }
-                    } catch (Exception e) {
-                        handleDownloadError(program);
-                    }
+                    }, 1500);
+
                 } else if (newState == Worker.State.FAILED) {
                     browserManager.getEngine().getLoadWorker().stateProperty().removeListener(this);
                     handleDownloadError(program);
                 }
             }
         });
+    }
+
+    private void executeSelectorLogic(TrackedProgram program) {
+        try {
+            String selector = program.getDownloadSelector();
+
+            // Script wrapped in an IIFE ((function(){...})()) to allow 'return' statements
+            String script =
+                    "(function() { " +
+                            "  var el = document.querySelector('" + selector.replace("'", "\\'") + "');" +
+                            "  if(el) { " +
+                            "    if(el.tagName === 'A' && el.href) return el.href; " + // Return link URL
+                            "    el.click(); return 'CLICKED'; " +                     // Click button
+                            "  } " +
+                            "  return ''; " +
+                            "})()";
+
+            Object result = browserManager.getEngine().executeScript(script);
+            String resultStr = (result != null) ? result.toString() : "";
+
+            if ("CLICKED".equals(resultStr)) {
+                System.out.println("Button clicked via JS simulation.");
+                // Note: If the click triggers a file download dialog natively, JavaFX might suppress it
+                // unless a DownloadListener is attached to the engine (advanced topic).
+                // For direct links masked as buttons, this usually works.
+            } else if (!resultStr.isEmpty()) {
+                // If the script returned a URL string
+                performInAppDownload(resultStr, program.getName());
+            } else {
+                System.err.println("Selector element not found or invalid: " + selector);
+                handleDownloadError(program);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            handleDownloadError(program);
+        }
     }
 
     private void performInAppDownload(String urlString, String programName) {
@@ -466,6 +521,11 @@ public class MainController {
     private void switchToEditor(TrackedProgram program) {
         this.currentlyEditingProgram = program;
         editorProgramNameLabel.setText(program.getName());
+
+        if (downloadUrlField != null) {
+            downloadUrlField.setText(program.getDownloadUrl() != null ? program.getDownloadUrl() : "");
+        }
+
         browserManager.loadProgram(program); // Delegate loading
         dashboardView.setVisible(false);
         editorView.setVisible(true);
@@ -475,5 +535,46 @@ public class MainController {
         this.currentlyEditingProgram = null;
         dashboardView.setVisible(true);
         editorView.setVisible(false);
+    }
+
+    @FXML
+    private void onAboutClick() {
+        String appVersion = " Unknown";
+        try (java.io.InputStream input = getClass().getResourceAsStream("/app.properties")) {
+            if (input != null) {
+                java.util.Properties prop = new java.util.Properties();
+                prop.load(input);
+                appVersion = prop.getProperty("version", " Unknown");
+            }
+        } catch (java.io.IOException ex) {
+            ex.printStackTrace();
+        }
+
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("About Update Tracker");
+
+        // Use the loaded version string
+        alert.setHeaderText("Update Tracker v" + appVersion);
+
+        String javaVersion = System.getProperty("java.version");
+        String javafxVersion = System.getProperty("javafx.version");
+
+        String content = """
+                Author: Konrad Czardybon
+                License: MIT License
+                
+                Build Information:
+                Java Version: %s
+                JavaFX Version: %s
+                
+                Libraries: Jsoup, Gson
+                
+                2026 © All rights reserved.
+                """.formatted(javaVersion, javafxVersion);
+
+        alert.setContentText(content);
+        alert.showAndWait();
+
+        programTable.requestFocus();
     }
 }
