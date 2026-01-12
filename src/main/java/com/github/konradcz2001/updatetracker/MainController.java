@@ -205,6 +205,7 @@ public class MainController {
                     FXCollections.sort(programList, createProgramComparator());
                     progressDialog.setResult(ButtonType.CANCEL);
                     progressDialog.close();
+                    programTable.requestFocus();
                 }
         );
 
@@ -237,6 +238,7 @@ public class MainController {
         else if (selected.getUrl() != null && !selected.getUrl().isEmpty()) {
             performInAppDownload(selected.getUrl(), selected.getName());
         }
+        programTable.requestFocus();
     }
 
     private void resolveAndDownload(TrackedProgram program) {
@@ -348,6 +350,7 @@ public class MainController {
                 switchToEditor(program);
             }
         });
+        programTable.requestFocus();
     }
 
     private void openSystemBrowser(String url) {
@@ -408,6 +411,7 @@ public class MainController {
                 storageService.saveData(programList);
             }
         });
+        programTable.requestFocus();
     }
 
     private boolean isNameDuplicate(String name) {
@@ -426,19 +430,27 @@ public class MainController {
     @FXML
     private void onDeleteProgramClick() {
         TrackedProgram selected = programTable.getSelectionModel().getSelectedItem();
-        if (selected != null) programList.remove(selected);
+        if (selected != null) {
+            programList.remove(selected);
+            if (!programList.isEmpty()) {
+                programTable.getSelectionModel().select(0);
+            }
+        }
+        programTable.requestFocus();
     }
 
     @FXML
     private void onEditSourceClick() {
         TrackedProgram selected = programTable.getSelectionModel().getSelectedItem();
         if (selected != null) switchToEditor(selected);
+        programTable.requestFocus();
     }
 
     @FXML
     private void onBackToDashboard() {
         browserManager.resetModes();
         switchToDashboard();
+        programTable.requestFocus();
     }
 
     // --- View Navigation ---
