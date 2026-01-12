@@ -23,11 +23,12 @@ java {
 
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
+    options.compilerArgs.add("-Xlint:-module")
 }
 
 application {
     mainModule.set("com.github.konradcz2001.updatetracker")
-    mainClass.set("com.github.konradcz2001.updatetracker.UpdateTrackerApp")
+    mainClass.set("com.github.konradcz2001.updatetracker.Launcher")
 }
 
 javafx {

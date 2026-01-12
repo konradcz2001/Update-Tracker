@@ -1,9 +1,11 @@
 package com.github.konradcz2001.updatetracker;
 
+import com.github.konradcz2001.updatetracker.service.DownloadService;
 import com.github.konradcz2001.updatetracker.service.ScanService;
 import com.github.konradcz2001.updatetracker.service.ScraperService;
 import com.github.konradcz2001.updatetracker.service.StorageService;
 import com.github.konradcz2001.updatetracker.ui.BrowserManager;
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.SortedList;
@@ -16,21 +18,17 @@ import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.web.WebView;
-import javafx.beans.binding.Bindings;
-
+import javafx.stage.FileChooser;
+import java.io.File;
 import java.util.Comparator;
 import java.util.List;
 
 public class MainController {
 
-    static {
-        java.net.CookieHandler.setDefault(null);
-        java.util.logging.Logger.getLogger("java.net.CookieManager").setLevel(java.util.logging.Level.OFF);
-    }
-
     // --- Dependencies ---
     private final StorageService storageService = new StorageService();
     private final ScraperService scraperService = new ScraperService();
+    private final DownloadService downloadService = new DownloadService();
     private ScanService scanService;
     private BrowserManager browserManager;
 
@@ -235,8 +233,9 @@ public class MainController {
 
         if (selected.getDownloadSelector() != null && !selected.getDownloadSelector().isEmpty()) {
             resolveAndDownload(selected);
-        } else if (selected.getUrl() != null && !selected.getUrl().isEmpty()) {
-            openSystemBrowser(selected.getUrl());
+        }
+        else if (selected.getUrl() != null && !selected.getUrl().isEmpty()) {
+            performInAppDownload(selected.getUrl(), selected.getName());
         }
     }
 
@@ -245,7 +244,6 @@ public class MainController {
         if (mainUrl == null || mainUrl.isEmpty()) return;
         if (!mainUrl.startsWith("http")) mainUrl = "https://" + mainUrl;
 
-        // Use BrowserManager's engine temporarily to resolve link
         browserManager.getEngine().load(mainUrl);
         browserManager.getEngine().getLoadWorker().stateProperty().addListener(new javafx.beans.value.ChangeListener<>() {
             @Override
@@ -258,15 +256,96 @@ public class MainController {
                                 "el ? el.href : '';";
                         Object result = browserManager.getEngine().executeScript(script);
                         String dynamicLink = (result != null) ? result.toString() : "";
-                        if (!dynamicLink.isEmpty()) openSystemBrowser(dynamicLink);
-                        else openSystemBrowser(program.getUrl());
+
+                        if (!dynamicLink.isEmpty()) {
+                            performInAppDownload(dynamicLink, program.getName());
+                        } else {
+                            handleDownloadError(program);
+                        }
                     } catch (Exception e) {
-                        openSystemBrowser(program.getUrl());
+                        handleDownloadError(program);
                     }
                 } else if (newState == Worker.State.FAILED) {
                     browserManager.getEngine().getLoadWorker().stateProperty().removeListener(this);
-                    openSystemBrowser(program.getUrl());
+                    handleDownloadError(program);
                 }
+            }
+        });
+    }
+
+    private void performInAppDownload(String urlString, String programName) {
+        try {
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Save " + programName + " Installer");
+
+            // --- Set default directory to Downloads ---
+            File userHome = new File(System.getProperty("user.home"));
+            File downloadsDir = new File(userHome, "Downloads");
+
+            if (downloadsDir.exists() && downloadsDir.isDirectory()) {
+                fileChooser.setInitialDirectory(downloadsDir);
+            } else {
+                fileChooser.setInitialDirectory(userHome);
+            }
+            // ------------------------------------------
+
+            // Use the service to suggest a safe filename
+            String proposedName = downloadService.suggestFilename(urlString, programName);
+            fileChooser.setInitialFileName(proposedName);
+
+            java.io.File destFile = fileChooser.showSaveDialog(dashboardView.getScene().getWindow());
+
+            if (destFile != null) {
+                // Delegate the background task creation to the service
+                Task<Void> downloadTask = downloadService.createDownloadTask(urlString, destFile);
+
+                downloadTask.setOnSucceeded(e -> {
+                    Alert info = new Alert(Alert.AlertType.INFORMATION, "Download completed successfully!");
+                    info.setHeaderText(null);
+                    info.show();
+
+                    // Auto-update 'Last Downloaded Version'
+                    TrackedProgram p = programList.stream()
+                            .filter(prog -> prog.getName().equals(programName))
+                            .findFirst().orElse(null);
+
+                    if (p != null) {
+                        p.setLastDownloadedVersion(p.getCurrentVersion());
+                        programTable.refresh();
+                        storageService.saveData(programList);
+                    }
+                });
+
+                downloadTask.setOnFailed(e -> {
+                    TrackedProgram p = programList.stream()
+                            .filter(prog -> prog.getName().equals(programName))
+                            .findFirst().orElse(null);
+                    handleDownloadError(p);
+                });
+
+                Thread t = new Thread(downloadTask);
+                t.setDaemon(true);
+                t.start();
+            }
+        } catch (Exception e) {
+            TrackedProgram p = programList.stream()
+                    .filter(prog -> prog.getName().equals(programName))
+                    .findFirst().orElse(null);
+            handleDownloadError(p);
+        }
+    }
+
+    private void handleDownloadError(TrackedProgram program) {
+        Platform.runLater(() -> {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("Download Failed");
+            alert.setHeaderText("Could not download file automatically");
+            alert.setContentText("The link might be broken or protected. Redirecting to editor so you can select a new download source.");
+
+            alert.showAndWait();
+
+            if (program != null) {
+                switchToEditor(program);
             }
         });
     }

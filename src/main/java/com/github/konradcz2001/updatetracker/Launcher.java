@@ -10,6 +10,8 @@ public class Launcher {
         Logger logger = Logger.getLogger("java.net.CookieManager");
         logger.setLevel(Level.WARNING);
         logger.setUseParentHandlers(false);
+        java.net.CookieHandler.setDefault(null);
+
         Application.launch(UpdateTrackerApp.class, args);
     }
 }
