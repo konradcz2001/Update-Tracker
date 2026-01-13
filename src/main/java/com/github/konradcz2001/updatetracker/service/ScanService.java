@@ -4,7 +4,8 @@ import com.github.konradcz2001.updatetracker.TrackedProgram;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.concurrent.Worker;
-import javafx.scene.control.*;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Label;
 import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
 
@@ -207,8 +208,13 @@ public class ScanService {
 
                     String versionToSave = finalVersion;
                     Platform.runLater(() -> {
+                        // Check if version actually changed to update dates logic
+                        if (!versionToSave.equals(program.getCurrentVersion())) {
+                            program.setDateFoundOld(program.getDateFoundNew());
+                            program.setDateFoundNew(java.time.LocalDate.now().toString());
+                        }
+
                         program.setCurrentVersion(versionToSave);
-                        program.setLastCheckDate(java.time.LocalDate.now().toString());
                         if (onUpdateCallback != null) onUpdateCallback.run();
                     });
                     System.out.println(">>> SUCCESS: " + program.getName() + " -> " + versionToSave);

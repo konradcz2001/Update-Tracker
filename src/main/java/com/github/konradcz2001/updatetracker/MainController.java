@@ -1,9 +1,12 @@
 package com.github.konradcz2001.updatetracker;
 
+import com.github.konradcz2001.updatetracker.service.DownloadService;
 import com.github.konradcz2001.updatetracker.service.ScanService;
 import com.github.konradcz2001.updatetracker.service.ScraperService;
 import com.github.konradcz2001.updatetracker.service.StorageService;
 import com.github.konradcz2001.updatetracker.ui.BrowserManager;
+import javafx.application.Platform;
+import javafx.beans.binding.Bindings;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.SortedList;
@@ -16,20 +19,18 @@ import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.web.WebView;
+import javafx.stage.FileChooser;
 
+import java.io.File;
 import java.util.Comparator;
 import java.util.List;
 
 public class MainController {
 
-    static {
-        java.net.CookieHandler.setDefault(null);
-        java.util.logging.Logger.getLogger("java.net.CookieManager").setLevel(java.util.logging.Level.OFF);
-    }
-
     // --- Dependencies ---
     private final StorageService storageService = new StorageService();
     private final ScraperService scraperService = new ScraperService();
+    private final DownloadService downloadService = new DownloadService();
     private ScanService scanService;
     private BrowserManager browserManager;
 
@@ -38,7 +39,8 @@ public class MainController {
     @FXML private TableView<TrackedProgram> programTable;
     @FXML private TableColumn<TrackedProgram, String> colName;
     @FXML private TableColumn<TrackedProgram, String> colLastVersion;
-    @FXML private TableColumn<TrackedProgram, String> colDate;
+    @FXML private TableColumn<TrackedProgram, String> colDateOld;
+    @FXML private TableColumn<TrackedProgram, String> colDateNew;
     @FXML private TableColumn<TrackedProgram, String> colCurrentVersion;
 
     @FXML private BorderPane editorView;
@@ -47,6 +49,13 @@ public class MainController {
     @FXML private Label editorProgramNameLabel;
     @FXML private Button selectElementBtn;
     @FXML private Button selectDownloadBtn;
+    @FXML private TextField downloadUrlField;
+    @FXML private Label instructionLabel;
+
+    @FXML private Button btnEditName;
+    @FXML private Button btnDelete;
+    @FXML private Button btnConfigure;
+    @FXML private Button btnDownload;
 
     // --- Data ---
     private final ObservableList<TrackedProgram> programList = FXCollections.observableArrayList(
@@ -66,6 +75,7 @@ public class MainController {
                 urlField,
                 selectElementBtn,
                 selectDownloadBtn,
+                instructionLabel,
                 (Void) -> storageService.saveData(programList) // Callback on save
         );
 
@@ -74,20 +84,51 @@ public class MainController {
 
         // Save data whenever the list changes
         programList.addListener((javafx.collections.ListChangeListener<TrackedProgram>) c -> storageService.saveData(programList));
+
+        // Save download URL when text changes
+        if (downloadUrlField != null) {
+            downloadUrlField.textProperty().addListener((obs, oldVal, newVal) -> {
+                if (currentlyEditingProgram != null) {
+                    currentlyEditingProgram.setDownloadUrl(newVal);
+                    storageService.saveData(programList);
+                }
+            });
+        }
     }
 
     private void setupTable() {
         colName.setCellValueFactory(cellData -> cellData.getValue().nameProperty());
         colLastVersion.setCellValueFactory(cellData -> cellData.getValue().lastDownloadedVersionProperty());
-        colDate.setCellValueFactory(cellData -> cellData.getValue().lastCheckDateProperty());
+        colDateOld.setCellValueFactory(cellData -> cellData.getValue().dateFoundOldProperty());
+        colDateNew.setCellValueFactory(cellData -> cellData.getValue().dateFoundNewProperty());
         colCurrentVersion.setCellValueFactory(cellData -> cellData.getValue().currentVersionProperty());
 
         SortedList<TrackedProgram> sortedList = new SortedList<>(programList);
-        sortedList.setComparator(createProgramComparator());
+
+        // Bind SortedList comparator to TableView comparator
+        sortedList.comparatorProperty().bind(programTable.comparatorProperty());
 
         programTable.setItems(sortedList);
         programTable.setPlaceholder(new Label("No programs tracked yet. Click 'Add Program'."));
         programTable.setRowFactory(this::createRowFactory);
+
+        FXCollections.sort(programList, createProgramComparator());
+
+        programTable.getSortOrder().addListener((javafx.collections.ListChangeListener<TableColumn<TrackedProgram, ?>>) c -> {
+            if (programTable.getSortOrder().isEmpty()) {
+                FXCollections.sort(programList, createProgramComparator());
+            }
+        });
+
+        // Disable buttons when no selection
+        var selectionModel = programTable.getSelectionModel();
+        btnEditName.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
+        btnDelete.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
+        btnConfigure.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
+        btnDownload.disableProperty().bind(Bindings.createBooleanBinding(() -> {
+            TrackedProgram p = selectionModel.getSelectedItem();
+            return p == null || "N/A".equals(p.getCurrentVersion()) || p.getDownloadSelector() == null || p.getDownloadSelector().isEmpty();
+        }, selectionModel.selectedItemProperty()));
     }
 
     private Comparator<TrackedProgram> createProgramComparator() {
@@ -110,34 +151,50 @@ public class MainController {
             @Override
             protected void updateItem(TrackedProgram item, boolean empty) {
                 super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setStyle("");
-                } else {
-                    String curr = item.getCurrentVersion();
-                    String last = item.getLastDownloadedVersion();
-                    boolean isOutdated = !curr.equals(last) && !curr.equals("N/A");
-                    setStyle(isOutdated ? "-fx-background-color: #ff8484;" : "");
-                }
+                updateRowStyle(this);
             }
         };
 
+        row.selectedProperty().addListener((obs, wasSelected, isSelected) -> updateRowStyle(row));
+
         row.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, event -> {
-            if (!row.isEmpty() && event.isPrimaryButtonDown() && event.getClickCount() == 1) {
-                if (programTable.getSelectionModel().getSelectedItem() == row.getItem()) {
+            if (!row.isEmpty() && event.getButton() == javafx.scene.input.MouseButton.PRIMARY) {
+                if (row.isSelected()) {
                     programTable.getSelectionModel().clearSelection();
-                    event.consume();
+                } else {
+                    programTable.getSelectionModel().select(row.getItem());
                 }
+                event.consume();
             }
         });
+
         return row;
+    }
+
+    private void updateRowStyle(TableRow<TrackedProgram> row) {
+        if (row.isEmpty() || row.getItem() == null) {
+            row.setStyle("");
+        } else {
+            if (row.isSelected()) {
+                row.setStyle("");
+            } else {
+                TrackedProgram item = row.getItem();
+                String curr = item.getCurrentVersion();
+                String last = item.getLastDownloadedVersion();
+                boolean isOutdated = !curr.equals(last) && !curr.equals("N/A");
+                row.setStyle(isOutdated ? "-fx-background-color: #ff8484;" : "");
+            }
+        }
     }
 
     private void loadData() {
         List<TrackedProgram> loaded = storageService.loadData();
         if (loaded != null) {
             programList.setAll(loaded);
+            FXCollections.sort(programList, createProgramComparator());
         }
     }
+
 
     @FXML
     private void onScanUpdatesClick() {
@@ -163,8 +220,10 @@ public class MainController {
                 statusLabel,
                 () -> programTable.refresh(), // Update Callback
                 () -> {                       // Finished Callback
+                    FXCollections.sort(programList, createProgramComparator());
                     progressDialog.setResult(ButtonType.CANCEL);
                     progressDialog.close();
+                    programTable.requestFocus();
                 }
         );
 
@@ -187,46 +246,175 @@ public class MainController {
     }
 
     @FXML
+    private void onSelectElementClick() {
+        browserManager.toggleVersionSelectionMode();
+    }
+
+    @FXML
     private void onDownloadUpdateClick() {
         TrackedProgram selected = programTable.getSelectionModel().getSelectedItem();
         if (selected == null) return;
 
         if (selected.getDownloadSelector() != null && !selected.getDownloadSelector().isEmpty()) {
             resolveAndDownload(selected);
-        } else if (selected.getUrl() != null && !selected.getUrl().isEmpty()) {
-            openSystemBrowser(selected.getUrl());
         }
+        else if (selected.getUrl() != null && !selected.getUrl().isEmpty()) {
+            performInAppDownload(selected.getUrl(), selected.getName());
+        } else {
+            handleDownloadError(selected);
+        }
+        programTable.requestFocus();
     }
 
     private void resolveAndDownload(TrackedProgram program) {
-        String mainUrl = program.getUrl();
-        if (mainUrl == null || mainUrl.isEmpty()) return;
-        if (!mainUrl.startsWith("http")) mainUrl = "https://" + mainUrl;
+        String targetPageUrl = program.getUrl();
 
-        // Use BrowserManager's engine temporarily to resolve link
-        browserManager.getEngine().load(mainUrl);
+        if (program.getDownloadUrl() != null && !program.getDownloadUrl().isEmpty()) {
+            String version = program.getCurrentVersion();
+            if ("N/A".equals(version)) version = "";
+            targetPageUrl = downloadService.resolveDownloadUrl(program.getDownloadUrl(), version);
+        }
+
+        if (targetPageUrl == null || targetPageUrl.isEmpty()) return;
+        if (!targetPageUrl.startsWith("http")) targetPageUrl = "https://" + targetPageUrl;
+
+        System.out.println("Navigating to download page: " + targetPageUrl);
+
+        browserManager.getEngine().load(targetPageUrl);
+
         browserManager.getEngine().getLoadWorker().stateProperty().addListener(new javafx.beans.value.ChangeListener<>() {
             @Override
             public void changed(javafx.beans.value.ObservableValue<? extends Worker.State> obs, Worker.State oldState, Worker.State newState) {
                 if (newState == Worker.State.SUCCEEDED) {
                     browserManager.getEngine().getLoadWorker().stateProperty().removeListener(this);
-                    try {
-                        String selector = program.getDownloadSelector();
-                        String script = "var el = document.querySelector('" + selector.replace("'", "\\'") + "');" +
-                                "el ? el.href : '';";
-                        Object result = browserManager.getEngine().executeScript(script);
-                        String dynamicLink = (result != null) ? result.toString() : "";
-                        if (!dynamicLink.isEmpty()) openSystemBrowser(dynamicLink);
-                        else openSystemBrowser(program.getUrl());
-                    } catch (Exception e) {
-                        openSystemBrowser(program.getUrl());
-                    }
+
+                    new java.util.Timer().schedule(new java.util.TimerTask() {
+                        @Override
+                        public void run() {
+                            Platform.runLater(() -> executeSelectorLogic(program));
+                        }
+                    }, 1500);
+
                 } else if (newState == Worker.State.FAILED) {
                     browserManager.getEngine().getLoadWorker().stateProperty().removeListener(this);
-                    openSystemBrowser(program.getUrl());
+                    handleDownloadError(program);
                 }
             }
         });
+    }
+
+    private void executeSelectorLogic(TrackedProgram program) {
+        try {
+            String selector = program.getDownloadSelector();
+
+            // Script wrapped in an IIFE ((function(){...})()) to allow 'return' statements
+            String script =
+                    "(function() { " +
+                            "  var el = document.querySelector('" + selector.replace("'", "\\'") + "');" +
+                            "  if(el) { " +
+                            "    if(el.tagName === 'A' && el.href) return el.href; " + // Return link URL
+                            "    el.click(); return 'CLICKED'; " +                     // Click button
+                            "  } " +
+                            "  return ''; " +
+                            "})()";
+
+            Object result = browserManager.getEngine().executeScript(script);
+            String resultStr = (result != null) ? result.toString() : "";
+
+            if ("CLICKED".equals(resultStr)) {
+                System.out.println("Button clicked via JS simulation.");
+                // Note: If the click triggers a file download dialog natively, JavaFX might suppress it
+                // unless a DownloadListener is attached to the engine (advanced topic).
+                // For direct links masked as buttons, this usually works.
+            } else if (!resultStr.isEmpty()) {
+                // If the script returned a URL string
+                performInAppDownload(resultStr, program.getName());
+            } else {
+                System.err.println("Selector element not found or invalid: " + selector);
+                handleDownloadError(program);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            handleDownloadError(program);
+        }
+    }
+
+    private void performInAppDownload(String urlString, String programName) {
+        try {
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Save " + programName + " Installer");
+
+            // --- Set default directory to Downloads ---
+            File userHome = new File(System.getProperty("user.home"));
+            File downloadsDir = new File(userHome, "Downloads");
+
+            if (downloadsDir.exists() && downloadsDir.isDirectory()) {
+                fileChooser.setInitialDirectory(downloadsDir);
+            } else {
+                fileChooser.setInitialDirectory(userHome);
+            }
+            // ------------------------------------------
+
+            // Use the service to suggest a safe filename
+            String proposedName = downloadService.suggestFilename(urlString, programName);
+            fileChooser.setInitialFileName(proposedName);
+
+            java.io.File destFile = fileChooser.showSaveDialog(dashboardView.getScene().getWindow());
+
+            if (destFile != null) {
+                // Delegate the background task creation to the service
+                Task<Void> downloadTask = downloadService.createDownloadTask(urlString, destFile);
+
+                downloadTask.setOnSucceeded(e -> {
+                    Alert info = new Alert(Alert.AlertType.INFORMATION, "Download completed successfully!");
+                    info.setHeaderText(null);
+                    info.show();
+
+                    // Auto-update 'Last Downloaded Version'
+                    TrackedProgram p = programList.stream()
+                            .filter(prog -> prog.getName().equals(programName))
+                            .findFirst().orElse(null);
+
+                    if (p != null) {
+                        p.setLastDownloadedVersion(p.getCurrentVersion());
+                        programTable.refresh();
+                        storageService.saveData(programList);
+                    }
+                });
+
+                downloadTask.setOnFailed(e -> {
+                    TrackedProgram p = programList.stream()
+                            .filter(prog -> prog.getName().equals(programName))
+                            .findFirst().orElse(null);
+                    handleDownloadError(p);
+                });
+
+                Thread t = new Thread(downloadTask);
+                t.setDaemon(true);
+                t.start();
+            }
+        } catch (Exception e) {
+            TrackedProgram p = programList.stream()
+                    .filter(prog -> prog.getName().equals(programName))
+                    .findFirst().orElse(null);
+            handleDownloadError(p);
+        }
+    }
+
+    private void handleDownloadError(TrackedProgram program) {
+        Platform.runLater(() -> {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("Download Failed");
+            alert.setHeaderText("Could not download file automatically");
+            alert.setContentText("The link might be broken or protected. Redirecting to editor so you can select a new download source.");
+
+            alert.showAndWait();
+
+            if (program != null) {
+                switchToEditor(program);
+            }
+        });
+        programTable.requestFocus();
     }
 
     private void openSystemBrowser(String url) {
@@ -252,8 +440,13 @@ public class MainController {
         dialog.setContentText("Program Name:");
 
         dialog.showAndWait().ifPresent(name -> {
-            if (!name.trim().isEmpty()) {
-                TrackedProgram p = new TrackedProgram(name);
+            String trimmedName = name.trim();
+            if (!trimmedName.isEmpty()) {
+                if (isNameDuplicate(trimmedName)) {
+                    showError("Name already exists", "A program with this name is already on the list.");
+                    return;
+                }
+                TrackedProgram p = new TrackedProgram(trimmedName);
                 programList.add(p);
                 switchToEditor(p);
             }
@@ -261,27 +454,78 @@ public class MainController {
     }
 
     @FXML
+    private void onEditNameClick() {
+        TrackedProgram selected = programTable.getSelectionModel().getSelectedItem();
+        if (selected == null) return;
+
+        TextInputDialog dialog = new TextInputDialog(selected.getName());
+        dialog.setTitle("Edit Program Name");
+        dialog.setHeaderText("Rename " + selected.getName());
+        dialog.setContentText("New Name:");
+
+        dialog.showAndWait().ifPresent(newName -> {
+            String trimmedName = newName.trim();
+            if (!trimmedName.isEmpty() && !trimmedName.equals(selected.getName())) {
+                if (isNameDuplicate(trimmedName)) {
+                    showError("Name already exists", "A program with this name is already on the list.");
+                    return;
+                }
+                selected.setName(trimmedName);
+                programTable.refresh();
+                storageService.saveData(programList);
+            }
+        });
+        programTable.requestFocus();
+    }
+
+    private boolean isNameDuplicate(String name) {
+        return programList.stream()
+                .anyMatch(p -> p.getName().equalsIgnoreCase(name));
+    }
+
+    private void showError(String title, String content) {
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle("Error");
+        alert.setHeaderText(title);
+        alert.setContentText(content);
+        alert.showAndWait();
+    }
+
+    @FXML
     private void onDeleteProgramClick() {
         TrackedProgram selected = programTable.getSelectionModel().getSelectedItem();
-        if (selected != null) programList.remove(selected);
+        if (selected != null) {
+            programList.remove(selected);
+            if (!programList.isEmpty()) {
+                programTable.getSelectionModel().select(0);
+            }
+        }
+        programTable.requestFocus();
     }
 
     @FXML
     private void onEditSourceClick() {
         TrackedProgram selected = programTable.getSelectionModel().getSelectedItem();
         if (selected != null) switchToEditor(selected);
+        programTable.requestFocus();
     }
 
     @FXML
     private void onBackToDashboard() {
         browserManager.resetModes();
         switchToDashboard();
+        programTable.requestFocus();
     }
 
     // --- View Navigation ---
     private void switchToEditor(TrackedProgram program) {
         this.currentlyEditingProgram = program;
         editorProgramNameLabel.setText(program.getName());
+
+        if (downloadUrlField != null) {
+            downloadUrlField.setText(program.getDownloadUrl() != null ? program.getDownloadUrl() : "");
+        }
+
         browserManager.loadProgram(program); // Delegate loading
         dashboardView.setVisible(false);
         editorView.setVisible(true);
@@ -291,5 +535,46 @@ public class MainController {
         this.currentlyEditingProgram = null;
         dashboardView.setVisible(true);
         editorView.setVisible(false);
+    }
+
+    @FXML
+    private void onAboutClick() {
+        String appVersion = " Unknown";
+        try (java.io.InputStream input = getClass().getResourceAsStream("/app.properties")) {
+            if (input != null) {
+                java.util.Properties prop = new java.util.Properties();
+                prop.load(input);
+                appVersion = prop.getProperty("version", " Unknown");
+            }
+        } catch (java.io.IOException ex) {
+            ex.printStackTrace();
+        }
+
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("About Update Tracker");
+
+        // Use the loaded version string
+        alert.setHeaderText("Update Tracker v" + appVersion);
+
+        String javaVersion = System.getProperty("java.version");
+        String javafxVersion = System.getProperty("javafx.version");
+
+        String content = """
+                Author: Konrad Czardybon
+                License: MIT License
+                
+                Build Information:
+                Java Version: %s
+                JavaFX Version: %s
+                
+                Libraries: Jsoup, Gson
+                
+                2026 © All rights reserved.
+                """.formatted(javaVersion, javafxVersion);
+
+        alert.setContentText(content);
+        alert.showAndWait();
+
+        programTable.requestFocus();
     }
 }

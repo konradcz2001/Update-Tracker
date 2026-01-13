@@ -11,4 +11,7 @@ module com.github.konradcz2001.updatetracker {
 
     opens com.github.konradcz2001.updatetracker to javafx.fxml;
     exports com.github.konradcz2001.updatetracker;
+    exports com.github.konradcz2001.updatetracker.ui;
+    exports com.github.konradcz2001.updatetracker.service;
+    exports com.github.konradcz2001.updatetracker.util;
 }
