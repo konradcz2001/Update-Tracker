@@ -10,6 +10,7 @@ import javafx.scene.web.WebHistory;
 import javafx.scene.web.WebView;
 import netscape.javascript.JSObject;
 import java.util.Optional;
+import java.util.ResourceBundle;
 import java.util.function.Consumer;
 
 public class BrowserManager {
@@ -21,6 +22,7 @@ public class BrowserManager {
     private final Button selectDownloadBtn;
     private final Label instructionLabel;
     private final Consumer<Void> onSaveCallback;
+    private final ResourceBundle resources;
 
     private boolean isVersionSelectionMode = false;
     private boolean isDownloadSelectionMode = false;
@@ -29,7 +31,7 @@ public class BrowserManager {
     // Strong reference to bridge to prevent GC
     private final JavaBridge bridge = new JavaBridge();
 
-    public BrowserManager(WebView webView, TextField urlField, Button selectElementBtn, Button selectDownloadBtn, Label instructionLabel, Consumer<Void> onSaveCallback) {
+    public BrowserManager(WebView webView, TextField urlField, Button selectElementBtn, Button selectDownloadBtn, Label instructionLabel, Consumer<Void> onSaveCallback, ResourceBundle resources) {
         this.webView = webView;
         this.engine = webView.getEngine();
         this.urlField = urlField;
@@ -37,6 +39,7 @@ public class BrowserManager {
         this.selectDownloadBtn = selectDownloadBtn;
         this.instructionLabel = instructionLabel;
         this.onSaveCallback = onSaveCallback;
+        this.resources = resources;
 
         initialize();
     }
@@ -111,15 +114,15 @@ public class BrowserManager {
         isVersionSelectionMode = !isVersionSelectionMode;
         if (isVersionSelectionMode) {
             isDownloadSelectionMode = false;
-            selectElementBtn.setText("Exit Version Selection");
+            selectElementBtn.setText(resources.getString("browser.btn.exit_version"));
             selectDownloadBtn.setDisable(true);
-            instructionLabel.setText("Hold CTRL and click the version number.");
+            instructionLabel.setText(resources.getString("browser.instr.version"));
             instructionLabel.setStyle("-fx-text-fill: #000000; -fx-font-weight: bold;");
             injectSelectorScript();
         } else {
-            selectElementBtn.setText("Select Version Element");
+            selectElementBtn.setText(resources.getString("btn.select_version"));
             selectDownloadBtn.setDisable(false);
-            instructionLabel.setText("Navigate to page, then click below:");
+            instructionLabel.setText(resources.getString("browser.instr.default"));
             instructionLabel.setStyle("-fx-text-fill: #666666;");
         }
     }
@@ -128,15 +131,15 @@ public class BrowserManager {
         isDownloadSelectionMode = !isDownloadSelectionMode;
         if (isDownloadSelectionMode) {
             isVersionSelectionMode = false;
-            selectDownloadBtn.setText("Exit Link Selection");
+            selectDownloadBtn.setText(resources.getString("browser.btn.exit_download"));
             selectElementBtn.setDisable(true);
-            instructionLabel.setText("Hold CTRL and click the download link.");
+            instructionLabel.setText(resources.getString("browser.instr.download"));
             instructionLabel.setStyle("-fx-text-fill: #000000; -fx-font-weight: bold;");
             injectSelectorScript();
         } else {
-            selectDownloadBtn.setText("Select Download Link");
+            selectDownloadBtn.setText(resources.getString("btn.select_download"));
             selectElementBtn.setDisable(false);
-            instructionLabel.setText("Navigate to page, then click below:");
+            instructionLabel.setText(resources.getString("browser.instr.default"));
             instructionLabel.setStyle("-fx-text-fill: #666666;");
         }
     }
@@ -255,15 +258,14 @@ public class BrowserManager {
                     String currentPageUrl = engine.getLocation();
 
                     Dialog<String> dialog = new Dialog<>();
-                    dialog.setTitle("Download Configuration");
-                    dialog.setHeaderText("Download Element Selected");
+                    dialog.setTitle(resources.getString("dialog.config.download.title"));
+                    dialog.setHeaderText(resources.getString("dialog.config.download.header"));
 
                     ButtonType saveButtonType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
                     dialog.getDialogPane().getButtonTypes().addAll(saveButtonType, ButtonType.CANCEL);
 
                     VBox content = new VBox(10);
-                    Label label = new Label("Please confirm the page URL where this element is located.\n" +
-                            "If the page URL changes with the version, use {version} placeholder.");
+                    Label label = new Label(resources.getString("dialog.config.download.content"));
 
                     TextField urlField = new TextField(currentPageUrl);
                     urlField.setPromptText("https://example.com/v{version}/downloads");
@@ -289,7 +291,7 @@ public class BrowserManager {
 
                         onSaveCallback.accept(null);
 
-                        Alert info = new Alert(Alert.AlertType.INFORMATION, "Configuration saved!\nPage: " + (finalPageUrl.isEmpty() ? "(Default)" : finalPageUrl));
+                        Alert info = new Alert(Alert.AlertType.INFORMATION, String.format(resources.getString("dialog.config.saved"), (finalPageUrl.isEmpty() ? "(Default)" : finalPageUrl)));
                         info.setHeaderText(null);
                         info.showAndWait();
 
@@ -299,19 +301,19 @@ public class BrowserManager {
                 } else if (currentProgram != null) {
                     String safeText = (textContent != null) ? textContent.trim() : "";
                     Dialog<String> dialog = new Dialog<>();
-                    dialog.setTitle("Detected Version");
-                    dialog.setHeaderText("Confirm Version Number");
+                    dialog.setTitle(resources.getString("dialog.config.version.title"));
+                    dialog.setHeaderText(resources.getString("dialog.config.version.header"));
 
                     ButtonType okButtonType = new ButtonType("OK", ButtonBar.ButtonData.OK_DONE);
                     dialog.getDialogPane().getButtonTypes().addAll(okButtonType, ButtonType.CANCEL);
 
                     VBox content = new VBox(10);
-                    Label topLabel = new Label("Found text:");
+                    Label topLabel = new Label(resources.getString("dialog.config.version.found"));
                     TextArea textArea = new TextArea(safeText);
                     textArea.setWrapText(true);
                     textArea.setPrefRowCount(5);
                     textArea.setPrefWidth(400);
-                    Label bottomLabel = new Label("Keep ONLY the version number");
+                    Label bottomLabel = new Label(resources.getString("dialog.config.version.instruction"));
 
                     content.getChildren().addAll(topLabel, textArea, bottomLabel);
                     dialog.getDialogPane().setContent(content);
@@ -337,7 +339,7 @@ public class BrowserManager {
 
                         onSaveCallback.accept(null);
 
-                        Alert alert = new Alert(Alert.AlertType.INFORMATION, "Version saved successfully!");
+                        Alert alert = new Alert(Alert.AlertType.INFORMATION, resources.getString("dialog.config.success"));
                         alert.setHeaderText(null);
                         alert.showAndWait();
                         toggleVersionSelectionMode();

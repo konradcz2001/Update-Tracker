@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.util.ResourceBundle;
 
 public class DownloadService {
 
@@ -16,13 +17,14 @@ public class DownloadService {
      *
      * @param urlString The direct URL to the file.
      * @param destFile  The destination file on the local disk.
+     * @param resources The resource bundle for localized messages.
      * @return A JavaFX Task that performs the download.
      */
-    public Task<Void> createDownloadTask(String urlString, File destFile) {
+    public Task<Void> createDownloadTask(String urlString, File destFile, ResourceBundle resources) {
         return new Task<>() {
             @Override
             protected Void call() throws Exception {
-                updateMessage("Downloading...");
+                updateMessage(resources.getString("dialog.download.status"));
                 try (InputStream in = URI.create(urlString).toURL().openStream()) {
                     Files.copy(in, destFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
                 }
@@ -31,14 +33,6 @@ public class DownloadService {
         };
     }
 
-    /**
-     * Analyzes the URL and program name to propose a safe and valid filename.
-     * Extracts filename from URL path or falls back to sanitized program name.
-     *
-     * @param urlString   The URL to extract the filename from.
-     * @param programName The name of the program (used as fallback).
-     * @return A sanitized filename string ending with an extension if possible.
-     */
     public String suggestFilename(String urlString, String programName) {
         // Try to guess filename from URL
         String proposedName = urlString.substring(urlString.lastIndexOf('/') + 1);
@@ -56,12 +50,6 @@ public class DownloadService {
         return proposedName;
     }
 
-    /**
-     * Generates the final download URL based on the template and version.
-     * * @param urlTemplate The URL stored in the program (e.g., "https://site.com/app-{version}.exe")
-     * @param version The detected version string (e.g., "1.5.0")
-     * @return The runnable download link
-     */
     public String resolveDownloadUrl(String urlTemplate, String version) {
         if (urlTemplate == null || urlTemplate.isEmpty()) {
             return null;

@@ -20,9 +20,11 @@ import java.util.regex.Pattern;
 public class ScanService {
 
     private final ScraperService scraperService;
+    private final ResourceBundle resources;
 
-    public ScanService(ScraperService scraperService) {
+    public ScanService(ScraperService scraperService, ResourceBundle resources) {
         this.scraperService = scraperService;
+        this.resources = resources;
     }
 
     public Task<Void> createScanTask(List<TrackedProgram> programList, Label statusLabel, Runnable onUpdateCallback, Runnable onScanFinishedCallback) {
@@ -57,7 +59,7 @@ public class ScanService {
 
                         int current = processedCount.incrementAndGet();
                         updateProgress(current, total);
-                        Platform.runLater(() -> statusLabel.setText("Scanned " + current + "/" + total + " (" + program.getName() + ")"));
+                        Platform.runLater(() -> statusLabel.setText(String.format(resources.getString("dialog.scan.progress"), current, total, program.getName())));
                     }, executor);
 
                     futures.add(future);
@@ -72,7 +74,7 @@ public class ScanService {
                 }
 
                 updateProgress(total, total);
-                updateMessage("Finalizing results...");
+                updateMessage(resources.getString("dialog.scan.finalizing"));
 
                 Platform.runLater(() -> {
                     if (onScanFinishedCallback != null) onScanFinishedCallback.run();
@@ -234,10 +236,10 @@ public class ScanService {
     private void showScanResults(List<TrackedProgram> failedPrograms, int updatesFound) {
         if (!failedPrograms.isEmpty()) {
             Alert alert = new Alert(Alert.AlertType.WARNING);
-            alert.setTitle("Scan Completed with Errors");
-            alert.setHeaderText("Failed to check " + failedPrograms.size() + " programs");
+            alert.setTitle(resources.getString("dialog.scan.error.title"));
+            alert.setHeaderText(String.format(resources.getString("dialog.scan.error.header"), failedPrograms.size()));
 
-            StringBuilder sb = new StringBuilder("Could not check:\n");
+            StringBuilder sb = new StringBuilder(resources.getString("dialog.scan.error.content") + "\n");
             synchronized (failedPrograms) {
                 failedPrograms.sort((p1, p2) -> p1.getName().compareToIgnoreCase(p2.getName()));
                 for (TrackedProgram p : failedPrograms) sb.append("- ").append(p.getName()).append("\n");
@@ -246,8 +248,8 @@ public class ScanService {
             alert.showAndWait();
         } else {
             Alert alert = new Alert(Alert.AlertType.INFORMATION);
-            alert.setTitle("Scan Completed");
-            alert.setContentText("Scanning finished. Updates found: " + updatesFound);
+            alert.setTitle(resources.getString("dialog.scan.complete.title"));
+            alert.setContentText(String.format(resources.getString("dialog.scan.complete.content"), updatesFound));
             alert.showAndWait();
         }
     }
