@@ -26,8 +26,7 @@ public class UpdateTrackerApp extends Application {
                     bundle
             );
 
-            Scene scene = new Scene(fxmlLoader.load(), 900, 600);
-
+            Scene scene = new Scene(fxmlLoader.load(), 1100, 650);
             stage.setTitle("Update Tracker");
             var iconStream = UpdateTrackerApp.class.getResourceAsStream("/app_icon.png");
             if (iconStream != null) {

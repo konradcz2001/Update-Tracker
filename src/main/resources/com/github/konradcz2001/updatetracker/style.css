@@ -1,0 +1,202 @@
+/* --- Global Reset & Typography --- */
+.root {
+    -color-bg-main: #f8f9fa;
+    -color-bg-surface: #ffffff;
+    -color-accent: #007bff;
+    -color-accent-hover: #0069d9;
+    -color-text-primary: #212529;
+    -color-text-secondary: #6c757d;
+    -color-border: #dee2e6;
+
+    -color-row-outdated-bg: #fff5f5;
+    -color-row-outdated-text: #e03131;
+    -color-selection: #e7f5ff;
+    -color-selection-text: #007bff;
+
+    -fx-base: -color-bg-main;
+    -fx-background: -color-bg-main;
+    -fx-font-family: "Segoe UI", "Roboto", "Helvetica Neue", sans-serif;
+    -fx-font-size: 14px;
+}
+
+/* --- Header Section --- */
+.header-box {
+    -fx-background-color: -color-bg-surface;
+    -fx-padding: 15 20;
+    -fx-border-color: transparent transparent -color-border transparent;
+    -fx-border-width: 1;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.05), 10, 0, 0, 2);
+}
+
+.app-title {
+    -fx-font-size: 20px;
+    -fx-font-weight: 700;
+    -fx-text-fill: -color-text-primary;
+}
+
+/* --- Buttons --- */
+.button {
+    -fx-background-color: -color-bg-surface;
+    -fx-text-fill: -color-text-primary;
+    -fx-border-color: -color-border;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-padding: 8 20; /* Większy padding poziomy dla polskich napisów */
+    -fx-cursor: hand;
+    -fx-font-weight: 600;
+    -fx-font-size: 13px;
+}
+
+.button:hover {
+    -fx-background-color: #f1f3f5;
+    -fx-border-color: #adb5bd;
+}
+
+.button:pressed {
+    -fx-background-color: #e9ecef;
+}
+
+.button-primary {
+    -fx-background-color: -color-accent;
+    -fx-text-fill: white;
+    -fx-border-color: -color-accent;
+}
+
+.button-primary:hover {
+    -fx-background-color: -color-accent-hover;
+    -fx-border-color: -color-accent-hover;
+}
+
+/* Language Buttons */
+.lang-button {
+    -fx-min-width: 40px;
+    -fx-padding: 5 10;
+}
+
+.lang-button.active {
+    -fx-background-color: -color-accent;
+    -fx-text-fill: white;
+    -fx-border-color: -color-accent;
+}
+
+/* --- Table View --- */
+.table-view {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-padding: 10;
+}
+
+.table-view .column-header-background {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent transparent -color-border transparent;
+    -fx-border-width: 2;
+}
+
+.table-view .column-header {
+    -fx-background-color: transparent;
+    -fx-size: 45px;
+}
+
+.table-view .column-header .label {
+    -fx-text-fill: -color-text-secondary;
+    -fx-font-weight: 700;
+    -fx-font-size: 12px;
+    -fx-alignment: CENTER;
+    -fx-text-transform: uppercase;
+}
+
+.table-row-cell {
+    -fx-cell-size: 45px;
+    -fx-background-color: -color-bg-main;
+    -fx-border-color: transparent;
+}
+
+.table-row-cell:empty {
+    -fx-background-color: transparent;
+}
+
+.table-row-cell:odd {
+    -fx-background-color: -color-bg-surface;
+}
+
+.table-row-cell:filled:selected {
+    -fx-background-color: -color-selection;
+    -fx-background-insets: 0;
+}
+
+.table-row-cell:filled:selected .text {
+    -fx-fill: -color-selection-text;
+}
+
+.table-row-cell:outdated {
+    -fx-background-color: -color-row-outdated-bg;
+}
+
+.table-row-cell:outdated .text {
+    -fx-fill: -color-row-outdated-text;
+    -fx-font-weight: bold;
+}
+
+.table-row-cell:outdated:selected {
+    -fx-background-color: derive(-color-row-outdated-bg, -10%);
+}
+
+/* --- Scrollbar --- */
+.scroll-bar:vertical, .scroll-bar:horizontal {
+    -fx-background-color: transparent;
+}
+.scroll-bar .thumb {
+    -fx-background-color: #ced4da;
+    -fx-background-radius: 4;
+}
+
+/* --- Footer & Editor --- */
+.footer-box {
+    -fx-background-color: -color-bg-surface;
+    -fx-border-color: -color-border transparent transparent transparent;
+    -fx-padding: 15 20;
+}
+
+.editor-header {
+    -fx-background-color: -color-bg-surface;
+    -fx-padding: 15;
+    -fx-border-color: transparent transparent -color-border transparent;
+}
+
+.editor-toolbar {
+    -fx-background-color: #f1f3f5;
+    -fx-padding: 10;
+    -fx-border-color: transparent transparent -color-border transparent;
+}
+
+.dialog-pane {
+    -fx-background-color: -color-bg-surface;
+    -fx-border-color: -color-border;
+    -fx-border-width: 1;
+}
+
+.dialog-pane .header-panel {
+    -fx-background-color: -color-bg-main;
+    -fx-border-color: transparent transparent -color-border transparent;
+    -fx-padding: 15;
+}
+
+.dialog-pane .header-panel .label {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-text-primary;
+}
+
+.dialog-pane .content {
+    -fx-padding: 20;
+}
+
+.dialog-pane .content .label {
+    -fx-text-fill: -color-text-primary;
+    -fx-font-size: 14px;
+}
+
+.dialog-pane .button-bar {
+    -fx-padding: 15;
+    -fx-background-color: -color-bg-surface;
+}

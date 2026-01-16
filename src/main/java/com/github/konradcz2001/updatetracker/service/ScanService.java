@@ -5,6 +5,7 @@ import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.concurrent.Worker;
 import javafx.scene.control.Alert;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
@@ -236,6 +237,7 @@ public class ScanService {
     private void showScanResults(List<TrackedProgram> failedPrograms, int updatesFound) {
         if (!failedPrograms.isEmpty()) {
             Alert alert = new Alert(Alert.AlertType.WARNING);
+            styleDialog(alert);
             alert.setTitle(resources.getString("dialog.scan.error.title"));
             alert.setHeaderText(String.format(resources.getString("dialog.scan.error.header"), failedPrograms.size()));
 
@@ -248,9 +250,21 @@ public class ScanService {
             alert.showAndWait();
         } else {
             Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            styleDialog(alert);
             alert.setTitle(resources.getString("dialog.scan.complete.title"));
             alert.setContentText(String.format(resources.getString("dialog.scan.complete.content"), updatesFound));
             alert.showAndWait();
+        }
+    }
+
+    // --- Helper Method for Dialog Styling ---
+    private void styleDialog(Dialog<?> dialog) {
+        try {
+            dialog.getDialogPane().getStylesheets().add(
+                    getClass().getResource("style.css").toExternalForm()
+            );
+        } catch (Exception e) {
+            System.err.println("CSS Error: " + e.getMessage());
         }
     }
 }

@@ -21,6 +21,7 @@ import javafx.scene.layout.VBox;
 import javafx.scene.web.WebView;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
+import javafx.css.PseudoClass;
 
 import java.io.File;
 import java.net.URL;
@@ -30,6 +31,8 @@ import java.util.Locale;
 import java.util.ResourceBundle;
 
 public class MainController implements Initializable {
+
+    private static final PseudoClass OUTDATED_PSEUDO_CLASS = PseudoClass.getPseudoClass("outdated");
 
     // --- Dependencies ---
     private final StorageService storageService = new StorageService();
@@ -48,6 +51,7 @@ public class MainController implements Initializable {
     @FXML private TableColumn<TrackedProgram, String> colDateOld;
     @FXML private TableColumn<TrackedProgram, String> colDateNew;
     @FXML private TableColumn<TrackedProgram, String> colCurrentVersion;
+    @FXML private javafx.scene.layout.HBox languageContainer;
 
     @FXML private BorderPane editorView;
     @FXML private TextField urlField;
@@ -106,6 +110,8 @@ public class MainController implements Initializable {
 
         // Ensure the table grabs focus immediately after startup and language switch
         Platform.runLater(() -> programTable.requestFocus());
+
+        updateLanguageStyles();
     }
 
     private void setupTable() {
@@ -194,7 +200,7 @@ public class MainController implements Initializable {
                 String curr = item.getCurrentVersion();
                 String last = item.getLastDownloadedVersion();
                 boolean isOutdated = !curr.equals(last) && !curr.equals("N/A");
-                row.setStyle(isOutdated ? "-fx-background-color: #ff8484;" : "");
+                row.pseudoClassStateChanged(OUTDATED_PSEUDO_CLASS, isOutdated);
             }
         }
     }
@@ -379,6 +385,7 @@ public class MainController implements Initializable {
 
                 downloadTask.setOnSucceeded(e -> {
                     Alert info = new Alert(Alert.AlertType.INFORMATION, resources.getString("dialog.download.success"));
+                    styleDialog(info);
                     info.setHeaderText(null);
                     info.show();
 
@@ -416,6 +423,7 @@ public class MainController implements Initializable {
     private void handleDownloadError(TrackedProgram program) {
         Platform.runLater(() -> {
             Alert alert = new Alert(Alert.AlertType.WARNING);
+            styleDialog(alert);
             alert.setTitle(resources.getString("dialog.download.fail.title"));
             alert.setHeaderText(resources.getString("dialog.download.fail.header"));
             alert.setContentText(resources.getString("dialog.download.fail.content"));
@@ -499,6 +507,7 @@ public class MainController implements Initializable {
 
     private void showError(String title, String content) {
         Alert alert = new Alert(Alert.AlertType.ERROR);
+        styleDialog(alert);
         alert.setTitle(resources.getString("dialog.error.title"));
         alert.setHeaderText(title);
         alert.setContentText(content);
@@ -565,6 +574,7 @@ public class MainController implements Initializable {
         }
 
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        styleDialog(alert);
         alert.setTitle(resources.getString("dialog.about.title"));
 
         // Use the loaded version string
@@ -589,6 +599,7 @@ public class MainController implements Initializable {
         if (configService.getConfig().getLanguage().equals(langCode)) return;
         configService.getConfig().setLanguage(langCode);
         configService.saveConfig();
+        updateLanguageStyles();
         reloadUI();
     }
 
@@ -601,11 +612,40 @@ public class MainController implements Initializable {
             ResourceBundle bundle = ResourceBundle.getBundle("com.github.konradcz2001.updatetracker.messages", locale);
 
             FXMLLoader loader = new FXMLLoader(UpdateTrackerApp.class.getResource("main-view.fxml"), bundle);
-            Scene scene = new Scene(loader.load(), 900, 600);
+            Scene scene = new Scene(loader.load(), 1100, 650);
 
             stage.setScene(scene);
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    // --- Helper Method for Dialog Styling ---
+    private void styleDialog(Dialog<?> dialog) {
+        try {
+            dialog.getDialogPane().getStylesheets().add(
+                    getClass().getResource("style.css").toExternalForm()
+            );
+        } catch (Exception e) {
+            System.err.println("CSS Error: " + e.getMessage());
+        }
+    }
+
+    private void updateLanguageStyles() {
+        String currentLang = configService.getConfig().getLanguage();
+
+        if (languageContainer == null) return;
+
+        for (javafx.scene.Node node : languageContainer.getChildren()) {
+            if (node instanceof Button button) {
+                Object userData = button.getUserData();
+
+                button.getStyleClass().remove("active");
+
+                if (userData != null && userData.toString().equals(currentLang)) {
+                    button.getStyleClass().add("active");
+                }
+            }
         }
     }
 }

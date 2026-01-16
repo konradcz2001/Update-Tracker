@@ -292,6 +292,7 @@ public class BrowserManager {
                         onSaveCallback.accept(null);
 
                         Alert info = new Alert(Alert.AlertType.INFORMATION, String.format(resources.getString("dialog.config.saved"), (finalPageUrl.isEmpty() ? "(Default)" : finalPageUrl)));
+                        styleDialog(info);
                         info.setHeaderText(null);
                         info.showAndWait();
 
@@ -340,12 +341,24 @@ public class BrowserManager {
                         onSaveCallback.accept(null);
 
                         Alert alert = new Alert(Alert.AlertType.INFORMATION, resources.getString("dialog.config.success"));
+                        styleDialog(alert);
                         alert.setHeaderText(null);
                         alert.showAndWait();
                         toggleVersionSelectionMode();
                     });
                 }
             });
+        }
+    }
+
+    // --- Helper Method for Dialog Styling ---
+    private void styleDialog(Dialog<?> dialog) {
+        try {
+            dialog.getDialogPane().getStylesheets().add(
+                    getClass().getResource("style.css").toExternalForm()
+            );
+        } catch (Exception e) {
+            System.err.println("CSS Error: " + e.getMessage());
         }
     }
 }
