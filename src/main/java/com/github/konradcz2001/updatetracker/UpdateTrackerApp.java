@@ -27,8 +27,13 @@ public class UpdateTrackerApp extends Application {
             );
 
             Scene scene = new Scene(fxmlLoader.load(), 1100, 650);
+
+            if (configService.getConfig().isDarkMode()) {
+                scene.getRoot().getStyleClass().add("dark-mode");
+            }
+
             stage.setTitle("Update Tracker");
-            var iconStream = UpdateTrackerApp.class.getResourceAsStream("/app_icon.png");
+            var iconStream = UpdateTrackerApp.class.getResourceAsStream("/com/github/konradcz2001/updatetracker/app_icon.png");
             if (iconStream != null) {
                 stage.getIcons().add(new javafx.scene.image.Image(iconStream));
             }

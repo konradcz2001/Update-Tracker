@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 <?import javafx.scene.web.WebView?>
+<?import org.kordamp.ikonli.javafx.FontIcon?>
 
 <StackPane xmlns:fx="http://javafx.com/fxml"
            fx:controller="com.github.konradcz2001.updatetracker.MainController"
@@ -15,6 +15,15 @@
             <HBox spacing="15" alignment="CENTER_LEFT" styleClass="header-box">
                 <Label text="%app.title" styleClass="app-title"/>
                 <Region HBox.hgrow="ALWAYS"/>
+
+                <Button fx:id="btnThemeToggle" onAction="#onToggleThemeClick" styleClass="icon-button">
+                    <graphic>
+                        <FontIcon fx:id="themeIcon" iconLiteral="mdal-brightness_3" iconSize="20"/>
+                    </graphic>
+                    <tooltip><Tooltip text="Toggle Dark Mode"/></tooltip>
+                </Button>
+
+                <Separator orientation="VERTICAL" />
 
                 <HBox fx:id="languageContainer" spacing="8" alignment="CENTER">
                     <Button text="PL" userData="pl" onAction="#onLanguagePlClick" focusTraversable="false" styleClass="button, lang-button"/>
@@ -55,7 +64,7 @@
         </bottom>
     </BorderPane>
 
-    <BorderPane fx:id="editorView" visible="false" style="-fx-background-color: white;">
+    <BorderPane fx:id="editorView" visible="false" styleClass="view-background">
         <top>
             <VBox spacing="0">
                 <HBox spacing="15" alignment="CENTER_LEFT" styleClass="editor-header">
@@ -80,8 +89,8 @@
         </center>
 
         <bottom>
-            <HBox spacing="15" alignment="CENTER_RIGHT" styleClass="footer-box" style="-fx-background-color: #f8f9fa;">
-                <Label fx:id="instructionLabel" text="%lbl.navigate" textFill="#666666"/>
+            <HBox spacing="15" alignment="CENTER_RIGHT" styleClass="footer-box">
+                <Label fx:id="instructionLabel" text="%lbl.navigate" styleClass="instruction-label"/>
                 <Button text="%btn.select_version" fx:id="selectElementBtn" onAction="#onSelectElementClick"/>
                 <Button text="%btn.select_download" fx:id="selectDownloadBtn" onAction="#onSelectDownloadClick"/>
             </HBox>

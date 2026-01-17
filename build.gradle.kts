@@ -41,6 +41,9 @@ dependencies {
     implementation("org.jsoup:jsoup:1.17.2")
     // JSON processing library
     implementation("com.fasterxml.jackson.core:jackson-databind:2.16.1")
+    // --- Ikonli (Icons) ---
+    implementation("org.kordamp.ikonli:ikonli-javafx:12.3.1")
+    implementation("org.kordamp.ikonli:ikonli-material2-pack:12.3.1")
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:${junitVersion}")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:${junitVersion}")
@@ -73,7 +76,7 @@ jlink {
 
         installerType = "msi"
 
-        icon = "src/main/resources/app_icon.ico"
+        icon = "src/main/resources/com/github/konradcz2001/updatetracker/app_icon.ico"
 
         if (org.gradle.internal.os.OperatingSystem.current().isWindows()) {
             installerOptions.add("--win-dir-chooser")

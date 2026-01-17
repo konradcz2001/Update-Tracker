@@ -6,6 +6,7 @@ import javafx.concurrent.Task;
 import javafx.concurrent.Worker;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Dialog;
+import javafx.scene.control.DialogPane;
 import javafx.scene.control.Label;
 import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
@@ -22,10 +23,12 @@ public class ScanService {
 
     private final ScraperService scraperService;
     private final ResourceBundle resources;
+    private final ConfigService configService;
 
-    public ScanService(ScraperService scraperService, ResourceBundle resources) {
+    public ScanService(ScraperService scraperService, ResourceBundle resources, ConfigService configService) {
         this.scraperService = scraperService;
         this.resources = resources;
+        this.configService = configService;
     }
 
     public Task<Void> createScanTask(List<TrackedProgram> programList, Label statusLabel, Runnable onUpdateCallback, Runnable onScanFinishedCallback) {
@@ -259,12 +262,15 @@ public class ScanService {
 
     // --- Helper Method for Dialog Styling ---
     private void styleDialog(Dialog<?> dialog) {
-        try {
-            dialog.getDialogPane().getStylesheets().add(
-                    getClass().getResource("style.css").toExternalForm()
-            );
-        } catch (Exception e) {
-            System.err.println("CSS Error: " + e.getMessage());
+        DialogPane pane = dialog.getDialogPane();
+        String cssUrl = com.github.konradcz2001.updatetracker.UpdateTrackerApp.class
+                .getResource("style.css")
+                .toExternalForm();
+
+        pane.getStylesheets().add(cssUrl);
+
+        if (configService.getConfig().isDarkMode()) {
+            pane.getStyleClass().add("dark-mode");
         }
     }
 }

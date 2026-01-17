@@ -23,15 +23,17 @@ public class BrowserManager {
     private final Label instructionLabel;
     private final Consumer<Void> onSaveCallback;
     private final ResourceBundle resources;
+    private final com.github.konradcz2001.updatetracker.service.ConfigService configService;
 
     private boolean isVersionSelectionMode = false;
     private boolean isDownloadSelectionMode = false;
     private TrackedProgram currentProgram;
+    private boolean isDialogOpen = false;
 
     // Strong reference to bridge to prevent GC
     private final JavaBridge bridge = new JavaBridge();
 
-    public BrowserManager(WebView webView, TextField urlField, Button selectElementBtn, Button selectDownloadBtn, Label instructionLabel, Consumer<Void> onSaveCallback, ResourceBundle resources) {
+    public BrowserManager(WebView webView, TextField urlField, Button selectElementBtn, Button selectDownloadBtn, Label instructionLabel, Consumer<Void> onSaveCallback, ResourceBundle resources, com.github.konradcz2001.updatetracker.service.ConfigService configService) {
         this.webView = webView;
         this.engine = webView.getEngine();
         this.urlField = urlField;
@@ -40,6 +42,7 @@ public class BrowserManager {
         this.instructionLabel = instructionLabel;
         this.onSaveCallback = onSaveCallback;
         this.resources = resources;
+        this.configService = configService;
 
         initialize();
     }
@@ -117,13 +120,15 @@ public class BrowserManager {
             selectElementBtn.setText(resources.getString("browser.btn.exit_version"));
             selectDownloadBtn.setDisable(true);
             instructionLabel.setText(resources.getString("browser.instr.version"));
-            instructionLabel.setStyle("-fx-text-fill: #000000; -fx-font-weight: bold;");
+            if (!instructionLabel.getStyleClass().contains("active-mode")) {
+                instructionLabel.getStyleClass().add("active-mode");
+            }
             injectSelectorScript();
         } else {
             selectElementBtn.setText(resources.getString("btn.select_version"));
             selectDownloadBtn.setDisable(false);
             instructionLabel.setText(resources.getString("browser.instr.default"));
-            instructionLabel.setStyle("-fx-text-fill: #666666;");
+            instructionLabel.getStyleClass().remove("active-mode");
         }
     }
 
@@ -134,13 +139,15 @@ public class BrowserManager {
             selectDownloadBtn.setText(resources.getString("browser.btn.exit_download"));
             selectElementBtn.setDisable(true);
             instructionLabel.setText(resources.getString("browser.instr.download"));
-            instructionLabel.setStyle("-fx-text-fill: #000000; -fx-font-weight: bold;");
+            if (!instructionLabel.getStyleClass().contains("active-mode")) {
+                instructionLabel.getStyleClass().add("active-mode");
+            }
             injectSelectorScript();
         } else {
             selectDownloadBtn.setText(resources.getString("btn.select_download"));
             selectElementBtn.setDisable(false);
             instructionLabel.setText(resources.getString("browser.instr.default"));
-            instructionLabel.setStyle("-fx-text-fill: #666666;");
+            instructionLabel.getStyleClass().remove("active-mode");
         }
     }
 
@@ -253,11 +260,15 @@ public class BrowserManager {
     public class JavaBridge {
         public void onElementSelected(String cssSelector, String textContent) {
             Platform.runLater(() -> {
+                if (isDialogOpen) return;
+                isDialogOpen = true;
+
                 if (isDownloadSelectionMode && currentProgram != null) {
 
                     String currentPageUrl = engine.getLocation();
 
                     Dialog<String> dialog = new Dialog<>();
+                    styleDialog(dialog);
                     dialog.setTitle(resources.getString("dialog.config.download.title"));
                     dialog.setHeaderText(resources.getString("dialog.config.download.header"));
 
@@ -302,6 +313,7 @@ public class BrowserManager {
                 } else if (currentProgram != null) {
                     String safeText = (textContent != null) ? textContent.trim() : "";
                     Dialog<String> dialog = new Dialog<>();
+                    styleDialog(dialog);
                     dialog.setTitle(resources.getString("dialog.config.version.title"));
                     dialog.setHeaderText(resources.getString("dialog.config.version.header"));
 
@@ -347,18 +359,22 @@ public class BrowserManager {
                         toggleVersionSelectionMode();
                     });
                 }
+                isDialogOpen = false;
             });
         }
     }
 
     // --- Helper Method for Dialog Styling ---
     private void styleDialog(Dialog<?> dialog) {
-        try {
-            dialog.getDialogPane().getStylesheets().add(
-                    getClass().getResource("style.css").toExternalForm()
-            );
-        } catch (Exception e) {
-            System.err.println("CSS Error: " + e.getMessage());
+        DialogPane pane = dialog.getDialogPane();
+        String cssUrl = com.github.konradcz2001.updatetracker.UpdateTrackerApp.class
+                .getResource("style.css")
+                .toExternalForm();
+
+        pane.getStylesheets().add(cssUrl);
+
+        if (configService.getConfig().isDarkMode()) {
+            pane.getStyleClass().add("dark-mode");
         }
     }
 }

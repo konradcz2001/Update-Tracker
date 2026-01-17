@@ -41,7 +41,7 @@
     -fx-border-color: -color-border;
     -fx-border-radius: 6;
     -fx-background-radius: 6;
-    -fx-padding: 8 20; /* Większy padding poziomy dla polskich napisów */
+    -fx-padding: 8 20;
     -fx-cursor: hand;
     -fx-font-weight: 600;
     -fx-font-size: 13px;
@@ -83,6 +83,7 @@
 .table-view {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
+    -fx-table-cell-border-color: transparent;
     -fx-padding: 10;
 }
 
@@ -109,16 +110,33 @@
     -fx-cell-size: 45px;
     -fx-background-color: -color-bg-main;
     -fx-border-color: transparent;
+    -fx-background-insets: 0;
+    -fx-border-width: 0;
 }
 
 .table-row-cell:empty {
     -fx-background-color: transparent;
 }
 
+/* Zebra Striping (Light Mode) */
 .table-row-cell:odd {
-    -fx-background-color: -color-bg-surface;
+    -fx-background-color: #f0f2f5;
 }
 
+/* Outdated Rows (Light Mode) */
+/* IMPORTANT: Defined after :odd to override zebra striping */
+.table-row-cell:outdated {
+    -fx-background-color: -color-row-outdated-bg;
+    -fx-background-insets: 0;
+    -fx-border-width: 0;
+}
+
+.table-row-cell:outdated .text {
+    -fx-fill: -color-row-outdated-text;
+    -fx-font-weight: bold;
+}
+
+/* Selection State (General) */
 .table-row-cell:filled:selected {
     -fx-background-color: -color-selection;
     -fx-background-insets: 0;
@@ -128,17 +146,17 @@
     -fx-fill: -color-selection-text;
 }
 
-.table-row-cell:outdated {
-    -fx-background-color: -color-row-outdated-bg;
-}
-
-.table-row-cell:outdated .text {
-    -fx-fill: -color-row-outdated-text;
-    -fx-font-weight: bold;
-}
-
+/* Outdated Row Selection (Force selection color over outdated color) */
 .table-row-cell:outdated:selected {
-    -fx-background-color: derive(-color-row-outdated-bg, -10%);
+    -fx-background-color: -color-selection !important;
+    -fx-background-insets: 0;
+}
+
+.table-row-cell:outdated:selected .text,
+.table-row-cell:outdated:selected .label,
+.table-row-cell:outdated:selected .table-cell {
+    -fx-fill: -color-selection-text !important;
+    -fx-text-fill: -color-selection-text !important;
 }
 
 /* --- Scrollbar --- */
@@ -169,6 +187,20 @@
     -fx-border-color: transparent transparent -color-border transparent;
 }
 
+.view-background {
+    -fx-background-color: -color-bg-surface;
+}
+
+.instruction-label {
+    -fx-text-fill: -color-text-secondary;
+}
+
+.instruction-label.active-mode {
+    -fx-text-fill: -color-text-primary;
+    -fx-font-weight: bold;
+}
+
+/* --- Dialogs --- */
 .dialog-pane {
     -fx-background-color: -color-bg-surface;
     -fx-border-color: -color-border;
@@ -199,4 +231,142 @@
 .dialog-pane .button-bar {
     -fx-padding: 15;
     -fx-background-color: -color-bg-surface;
+}
+
+/* --- Dark Mode Overrides --- */
+.root.dark-mode {
+    -color-bg-main: #121212;
+    -color-bg-surface: #1e1e1e;
+
+    /* Text Colors */
+    -color-text-primary: #e0e0e0;
+    -color-text-secondary: #b0b0b0;
+    -color-border: #444444;
+
+    -color-accent: #007bff;
+    -color-accent-hover: #0069d9;
+
+    -color-selection: #0d47a1;
+    -color-selection-text: #ffffff;
+
+    -color-row-outdated-bg: #4a1818;
+    -color-row-outdated-text: #ff8a80;
+
+    /* Focus Color */
+    -fx-focus-color: #808080;
+    -fx-faint-focus-color: transparent;
+}
+
+/* Global Text Color in Dark Mode */
+.root.dark-mode .label,
+.root.dark-mode .text,
+.root.dark-mode .check-box {
+    -fx-text-fill: -color-text-primary;
+    -fx-fill: -color-text-primary;
+}
+
+/* Language Buttons in Dark Mode (Force Blue Selection) */
+.root.dark-mode .lang-button.active {
+    -fx-background-color: -color-accent;
+    -fx-text-fill: white;
+    -fx-border-color: -color-accent;
+}
+.root.dark-mode .lang-button.active:hover {
+    -fx-background-color: -color-accent-hover;
+}
+
+/* Text Fields in Dark Mode */
+.root.dark-mode .text-field,
+.root.dark-mode .text-area {
+    -fx-background-color: -color-bg-surface;
+    -fx-text-fill: #ffffff;
+    -fx-prompt-text-fill: -color-text-secondary;
+    -fx-border-color: -color-border;
+}
+
+.root.dark-mode .text-field:focused,
+.root.dark-mode .text-area:focused {
+    -fx-border-color: #808080;
+    -fx-background-color: -color-bg-surface;
+}
+
+/* Buttons in Dark Mode */
+.root.dark-mode .button {
+    -fx-text-fill: -color-text-primary;
+    -fx-background-color: -color-bg-surface;
+    -fx-border-color: -color-border;
+}
+
+.root.dark-mode .button:hover {
+    -fx-background-color: #333333;
+}
+
+.root.dark-mode .button:pressed {
+    -fx-background-color: #222222;
+}
+
+/* Primary Button Exception */
+.root.dark-mode .button-primary {
+    -fx-background-color: -color-accent;
+    -fx-text-fill: white;
+    -fx-border-color: -color-accent;
+}
+.root.dark-mode .button-primary:hover {
+    -fx-background-color: -color-accent-hover;
+}
+
+/* --- Table Fixes for Dark Mode --- */
+.root.dark-mode .table-cell {
+    -fx-text-fill: -color-text-primary;
+}
+.root.dark-mode .column-header .label {
+    -fx-text-fill: -color-text-secondary;
+}
+
+/* 1. Zebra Striping for Dark Mode */
+.root.dark-mode .table-row-cell:odd {
+    -fx-background-color: #252525;
+}
+
+/* 2. Outdated Rows in Dark Mode */
+/* MUST be defined AFTER :odd to ensure red covers zebra */
+.root.dark-mode .table-row-cell:outdated {
+    -fx-background-color: -color-row-outdated-bg;
+}
+.root.dark-mode .table-row-cell:outdated .table-cell {
+    -fx-text-fill: -color-row-outdated-text;
+}
+
+/* 3. Selection Overrides (Highest Priority) */
+.root.dark-mode .table-row-cell:filled:selected,
+.root.dark-mode .table-row-cell:filled:selected .table-cell,
+.root.dark-mode .table-row-cell:outdated:selected,
+.root.dark-mode .table-row-cell:outdated:selected .table-cell {
+    -fx-background-color: -color-selection !important;
+    -fx-text-fill: -color-selection-text !important;
+    -fx-fill: -color-selection-text !important;
+}
+
+.root.dark-mode .table-row-cell:filled:selected .text,
+.root.dark-mode .table-row-cell:filled:selected .label {
+    -fx-fill: white !important;
+    -fx-text-fill: white !important;
+}
+
+/* Ikonli Icon Styling */
+.icon-button .ikonli-font-icon {
+    -fx-icon-color: -color-text-secondary;
+    -fx-fill: -color-text-secondary;
+    -fx-cursor: hand;
+}
+
+.icon-button:hover .ikonli-font-icon {
+    -fx-icon-color: -color-text-primary;
+    -fx-fill: -color-text-primary;
+}
+
+/* Ensure icon uses correct text color in Dark Mode */
+.root.dark-mode .icon-button .ikonli-font-icon {
+    -fx-icon-color: -color-text-primary;
+    -fx-fill: -color-text-primary;
 }

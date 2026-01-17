@@ -22,7 +22,7 @@ import javafx.scene.web.WebView;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.css.PseudoClass;
-
+import org.kordamp.ikonli.javafx.FontIcon;
 import java.io.File;
 import java.net.URL;
 import java.util.Comparator;
@@ -66,6 +66,8 @@ public class MainController implements Initializable {
     @FXML private Button btnDelete;
     @FXML private Button btnConfigure;
     @FXML private Button btnDownload;
+    @FXML private Button btnThemeToggle;
+    @FXML private FontIcon themeIcon;
 
     // --- Data ---
     private final ObservableList<TrackedProgram> programList = FXCollections.observableArrayList(
@@ -81,15 +83,16 @@ public class MainController implements Initializable {
         this.resources = resources;
 
         // Initialize services with Resources
-        scanService = new ScanService(scraperService, resources);
+        scanService = new ScanService(scraperService, resources, configService);
         browserManager = new BrowserManager(
                 webView,
                 urlField,
                 selectElementBtn,
                 selectDownloadBtn,
                 instructionLabel,
-                (Void) -> storageService.saveData(programList), // Callback on save
-                resources
+                (Void) -> storageService.saveData(programList),
+                resources,
+                configService
         );
 
         setupTable();
@@ -112,6 +115,8 @@ public class MainController implements Initializable {
         Platform.runLater(() -> programTable.requestFocus());
 
         updateLanguageStyles();
+        boolean isDark = configService.getConfig().isDarkMode();
+        updateThemeIcon(isDark);
     }
 
     private void setupTable() {
@@ -217,6 +222,7 @@ public class MainController implements Initializable {
     @FXML
     private void onScanUpdatesClick() {
         Dialog<ButtonType> progressDialog = new Dialog<>();
+        styleDialog(progressDialog);
         progressDialog.setTitle(resources.getString("dialog.scan.title"));
         progressDialog.setHeaderText(resources.getString("dialog.scan.header"));
 
@@ -455,6 +461,7 @@ public class MainController implements Initializable {
     @FXML
     private void onAddProgramClick() {
         TextInputDialog dialog = new TextInputDialog();
+        styleDialog(dialog);
         dialog.setTitle(resources.getString("dialog.add.title"));
         dialog.setHeaderText(resources.getString("dialog.add.header"));
         dialog.setContentText(resources.getString("dialog.add.content"));
@@ -480,6 +487,7 @@ public class MainController implements Initializable {
         if (selected == null) return;
 
         TextInputDialog dialog = new TextInputDialog(selected.getName());
+        styleDialog(dialog);
         dialog.setTitle(resources.getString("dialog.edit.title"));
         dialog.setHeaderText(String.format(resources.getString("dialog.edit.header"), selected.getName()));
         dialog.setContentText(resources.getString("dialog.edit.content"));
@@ -614,7 +622,13 @@ public class MainController implements Initializable {
             FXMLLoader loader = new FXMLLoader(UpdateTrackerApp.class.getResource("main-view.fxml"), bundle);
             Scene scene = new Scene(loader.load(), 1100, 650);
 
+            if (configService.getConfig().isDarkMode()) {
+                scene.getRoot().getStyleClass().add("dark-mode");
+            }
+
             stage.setScene(scene);
+            stage.setTitle(bundle.getString("app.title"));
+
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -622,12 +636,15 @@ public class MainController implements Initializable {
 
     // --- Helper Method for Dialog Styling ---
     private void styleDialog(Dialog<?> dialog) {
-        try {
-            dialog.getDialogPane().getStylesheets().add(
-                    getClass().getResource("style.css").toExternalForm()
-            );
-        } catch (Exception e) {
-            System.err.println("CSS Error: " + e.getMessage());
+        DialogPane pane = dialog.getDialogPane();
+        String cssUrl = com.github.konradcz2001.updatetracker.UpdateTrackerApp.class
+                .getResource("style.css")
+                .toExternalForm();
+
+        pane.getStylesheets().add(cssUrl);
+
+        if (configService.getConfig().isDarkMode()) {
+            pane.getStyleClass().add("dark-mode");
         }
     }
 
@@ -646,6 +663,39 @@ public class MainController implements Initializable {
                     button.getStyleClass().add("active");
                 }
             }
+        }
+    }
+
+    @FXML
+    private void onToggleThemeClick() {
+        boolean isDark = configService.getConfig().isDarkMode();
+        boolean newMode = !isDark;
+
+        configService.getConfig().setDarkMode(newMode);
+        configService.saveConfig();
+
+        applyThemeMode(newMode);
+        updateThemeIcon(newMode);
+    }
+
+    private void applyThemeMode(boolean isDark) {
+        Scene scene = dashboardView.getScene();
+        if (scene != null) {
+            if (isDark) {
+                if (!scene.getRoot().getStyleClass().contains("dark-mode")) {
+                    scene.getRoot().getStyleClass().add("dark-mode");
+                }
+            } else {
+                scene.getRoot().getStyleClass().remove("dark-mode");
+            }
+        }
+    }
+
+    private void updateThemeIcon(boolean isDark) {
+        if (isDark) {
+            themeIcon.setIconLiteral("mdmz-wb_sunny");
+        } else {
+            themeIcon.setIconLiteral("mdal-brightness_3");
         }
     }
 }
