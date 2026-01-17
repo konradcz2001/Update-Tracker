@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.github.konradcz2001"
-version = "1.1.0"
+version = "1.2.0"
 
 repositories {
     mavenCentral()
@@ -32,7 +32,7 @@ application {
 }
 
 javafx {
-    version = "21.0.6"
+    version = "21.0.9"
     modules = listOf("javafx.controls", "javafx.fxml", "javafx.web")
 }
 
@@ -72,7 +72,7 @@ jlink {
     jpackage {
         imageName = "UpdateTracker"
         installerName = "UpdateTrackerSetup"
-        appVersion = "1.1.0"
+        appVersion = "1.2.0"
 
         installerType = "msi"
 
