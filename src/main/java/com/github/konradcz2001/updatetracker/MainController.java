@@ -1,9 +1,6 @@
 package com.github.konradcz2001.updatetracker;
 
-import com.github.konradcz2001.updatetracker.service.DownloadService;
-import com.github.konradcz2001.updatetracker.service.ScanService;
-import com.github.konradcz2001.updatetracker.service.ScraperService;
-import com.github.konradcz2001.updatetracker.service.StorageService;
+import com.github.konradcz2001.updatetracker.service.*;
 import com.github.konradcz2001.updatetracker.ui.BrowserManager;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
@@ -13,24 +10,36 @@ import javafx.collections.transformation.SortedList;
 import javafx.concurrent.Task;
 import javafx.concurrent.Worker;
 import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
+import javafx.fxml.Initializable;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.web.WebView;
 import javafx.stage.FileChooser;
-
+import javafx.stage.Stage;
+import javafx.css.PseudoClass;
+import org.kordamp.ikonli.javafx.FontIcon;
 import java.io.File;
+import java.net.URL;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
+import java.util.ResourceBundle;
 
-public class MainController {
+public class MainController implements Initializable {
+
+    private static final PseudoClass OUTDATED_PSEUDO_CLASS = PseudoClass.getPseudoClass("outdated");
 
     // --- Dependencies ---
     private final StorageService storageService = new StorageService();
     private final ScraperService scraperService = new ScraperService();
     private final DownloadService downloadService = new DownloadService();
+    private final ConfigService configService = new ConfigService();
+    private ResourceBundle resources;
     private ScanService scanService;
     private BrowserManager browserManager;
 
@@ -42,6 +51,7 @@ public class MainController {
     @FXML private TableColumn<TrackedProgram, String> colDateOld;
     @FXML private TableColumn<TrackedProgram, String> colDateNew;
     @FXML private TableColumn<TrackedProgram, String> colCurrentVersion;
+    @FXML private javafx.scene.layout.HBox languageContainer;
 
     @FXML private BorderPane editorView;
     @FXML private TextField urlField;
@@ -56,6 +66,8 @@ public class MainController {
     @FXML private Button btnDelete;
     @FXML private Button btnConfigure;
     @FXML private Button btnDownload;
+    @FXML private Button btnThemeToggle;
+    @FXML private FontIcon themeIcon;
 
     // --- Data ---
     private final ObservableList<TrackedProgram> programList = FXCollections.observableArrayList(
@@ -66,17 +78,21 @@ public class MainController {
     );
     private TrackedProgram currentlyEditingProgram;
 
-    @FXML
-    public void initialize() {
-        // Initialize services
-        scanService = new ScanService(scraperService);
+    @Override
+    public void initialize(URL location, ResourceBundle resources) {
+        this.resources = resources;
+
+        // Initialize services with Resources
+        scanService = new ScanService(scraperService, resources, configService);
         browserManager = new BrowserManager(
                 webView,
                 urlField,
                 selectElementBtn,
                 selectDownloadBtn,
                 instructionLabel,
-                (Void) -> storageService.saveData(programList) // Callback on save
+                (Void) -> storageService.saveData(programList),
+                resources,
+                configService
         );
 
         setupTable();
@@ -94,6 +110,13 @@ public class MainController {
                 }
             });
         }
+
+        // Ensure the table grabs focus immediately after startup and language switch
+        Platform.runLater(() -> programTable.requestFocus());
+
+        updateLanguageStyles();
+        boolean isDark = configService.getConfig().isDarkMode();
+        updateThemeIcon(isDark);
     }
 
     private void setupTable() {
@@ -109,7 +132,7 @@ public class MainController {
         sortedList.comparatorProperty().bind(programTable.comparatorProperty());
 
         programTable.setItems(sortedList);
-        programTable.setPlaceholder(new Label("No programs tracked yet. Click 'Add Program'."));
+        programTable.setPlaceholder(new Label(resources.getString("table.placeholder")));
         programTable.setRowFactory(this::createRowFactory);
 
         FXCollections.sort(programList, createProgramComparator());
@@ -182,7 +205,7 @@ public class MainController {
                 String curr = item.getCurrentVersion();
                 String last = item.getLastDownloadedVersion();
                 boolean isOutdated = !curr.equals(last) && !curr.equals("N/A");
-                row.setStyle(isOutdated ? "-fx-background-color: #ff8484;" : "");
+                row.pseudoClassStateChanged(OUTDATED_PSEUDO_CLASS, isOutdated);
             }
         }
     }
@@ -199,20 +222,21 @@ public class MainController {
     @FXML
     private void onScanUpdatesClick() {
         Dialog<ButtonType> progressDialog = new Dialog<>();
-        progressDialog.setTitle("Scanning Updates");
-        progressDialog.setHeaderText("Checking program versions...");
+        styleDialog(progressDialog);
+        progressDialog.setTitle(resources.getString("dialog.scan.title"));
+        progressDialog.setHeaderText(resources.getString("dialog.scan.header"));
 
         ProgressBar progressBar = new ProgressBar(0);
         progressBar.setPrefWidth(300);
 
-        Label statusLabel = new Label("Initializing parallel scan...");
+        Label statusLabel = new Label(resources.getString("dialog.scan.status"));
         statusLabel.setPrefWidth(300);
 
         VBox content = new VBox(10, statusLabel, progressBar);
         content.setPadding(new Insets(20));
         content.setAlignment(Pos.CENTER);
         progressDialog.getDialogPane().setContent(content);
-        ButtonType cancelButtonType = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType cancelButtonType = new ButtonType(resources.getString("dialog.scan.btn_cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
         progressDialog.getDialogPane().getButtonTypes().add(cancelButtonType);
 
         Task<Void> task = scanService.createScanTask(
@@ -342,7 +366,7 @@ public class MainController {
     private void performInAppDownload(String urlString, String programName) {
         try {
             FileChooser fileChooser = new FileChooser();
-            fileChooser.setTitle("Save " + programName + " Installer");
+            fileChooser.setTitle(String.format(resources.getString("filechooser.save.title"), programName));
 
             // --- Set default directory to Downloads ---
             File userHome = new File(System.getProperty("user.home"));
@@ -363,10 +387,11 @@ public class MainController {
 
             if (destFile != null) {
                 // Delegate the background task creation to the service
-                Task<Void> downloadTask = downloadService.createDownloadTask(urlString, destFile);
+                Task<Void> downloadTask = downloadService.createDownloadTask(urlString, destFile, resources);
 
                 downloadTask.setOnSucceeded(e -> {
-                    Alert info = new Alert(Alert.AlertType.INFORMATION, "Download completed successfully!");
+                    Alert info = new Alert(Alert.AlertType.INFORMATION, resources.getString("dialog.download.success"));
+                    styleDialog(info);
                     info.setHeaderText(null);
                     info.show();
 
@@ -404,9 +429,10 @@ public class MainController {
     private void handleDownloadError(TrackedProgram program) {
         Platform.runLater(() -> {
             Alert alert = new Alert(Alert.AlertType.WARNING);
-            alert.setTitle("Download Failed");
-            alert.setHeaderText("Could not download file automatically");
-            alert.setContentText("The link might be broken or protected. Redirecting to editor so you can select a new download source.");
+            styleDialog(alert);
+            alert.setTitle(resources.getString("dialog.download.fail.title"));
+            alert.setHeaderText(resources.getString("dialog.download.fail.header"));
+            alert.setContentText(resources.getString("dialog.download.fail.content"));
 
             alert.showAndWait();
 
@@ -435,15 +461,17 @@ public class MainController {
     @FXML
     private void onAddProgramClick() {
         TextInputDialog dialog = new TextInputDialog();
-        dialog.setTitle("New Program");
-        dialog.setHeaderText("Add New Software to Track");
-        dialog.setContentText("Program Name:");
+        styleDialog(dialog);
+        dialog.setTitle(resources.getString("dialog.add.title"));
+        dialog.setHeaderText(resources.getString("dialog.add.header"));
+        dialog.setContentText(resources.getString("dialog.add.content"));
 
         dialog.showAndWait().ifPresent(name -> {
             String trimmedName = name.trim();
             if (!trimmedName.isEmpty()) {
                 if (isNameDuplicate(trimmedName)) {
-                    showError("Name already exists", "A program with this name is already on the list.");
+                    showError(resources.getString("dialog.error.duplicate.title"),
+                            resources.getString("dialog.error.duplicate.content"));
                     return;
                 }
                 TrackedProgram p = new TrackedProgram(trimmedName);
@@ -459,15 +487,17 @@ public class MainController {
         if (selected == null) return;
 
         TextInputDialog dialog = new TextInputDialog(selected.getName());
-        dialog.setTitle("Edit Program Name");
-        dialog.setHeaderText("Rename " + selected.getName());
-        dialog.setContentText("New Name:");
+        styleDialog(dialog);
+        dialog.setTitle(resources.getString("dialog.edit.title"));
+        dialog.setHeaderText(String.format(resources.getString("dialog.edit.header"), selected.getName()));
+        dialog.setContentText(resources.getString("dialog.edit.content"));
 
         dialog.showAndWait().ifPresent(newName -> {
             String trimmedName = newName.trim();
             if (!trimmedName.isEmpty() && !trimmedName.equals(selected.getName())) {
                 if (isNameDuplicate(trimmedName)) {
-                    showError("Name already exists", "A program with this name is already on the list.");
+                    showError(resources.getString("dialog.error.duplicate.title"),
+                            resources.getString("dialog.error.duplicate.content"));
                     return;
                 }
                 selected.setName(trimmedName);
@@ -485,7 +515,8 @@ public class MainController {
 
     private void showError(String title, String content) {
         Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle("Error");
+        styleDialog(alert);
+        alert.setTitle(resources.getString("dialog.error.title"));
         alert.setHeaderText(title);
         alert.setContentText(content);
         alert.showAndWait();
@@ -539,42 +570,132 @@ public class MainController {
 
     @FXML
     private void onAboutClick() {
-        String appVersion = " Unknown";
-        try (java.io.InputStream input = getClass().getResourceAsStream("/app.properties")) {
+        String appVersion = "?";
+        try (java.io.InputStream input = getClass().getResourceAsStream("/com/github/konradcz2001/updatetracker/app.properties")) {
             if (input != null) {
                 java.util.Properties prop = new java.util.Properties();
                 prop.load(input);
-                appVersion = prop.getProperty("version", " Unknown");
+                appVersion = prop.getProperty("version", "?");
             }
         } catch (java.io.IOException ex) {
             ex.printStackTrace();
         }
 
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("About Update Tracker");
+        styleDialog(alert);
+        alert.setTitle(resources.getString("dialog.about.title"));
 
         // Use the loaded version string
-        alert.setHeaderText("Update Tracker v" + appVersion);
+        alert.setHeaderText(String.format(resources.getString("dialog.about.header"), appVersion));
 
         String javaVersion = System.getProperty("java.version");
         String javafxVersion = System.getProperty("javafx.version");
 
-        String content = """
-                Author: Konrad Czardybon
-                License: MIT License
-                
-                Build Information:
-                Java Version: %s
-                JavaFX Version: %s
-                
-                Libraries: Jsoup, Gson
-                
-                2026 © All rights reserved.
-                """.formatted(javaVersion, javafxVersion);
+        String content = String.format(resources.getString("dialog.about.content"), javaVersion, javafxVersion);
 
         alert.setContentText(content);
         alert.showAndWait();
 
         programTable.requestFocus();
+    }
+
+    // --- Language Support ---
+    @FXML private void onLanguagePlClick() { setLanguage("pl"); }
+    @FXML private void onLanguageEnClick() { setLanguage("en"); }
+
+    private void setLanguage(String langCode) {
+        if (configService.getConfig().getLanguage().equals(langCode)) return;
+        configService.getConfig().setLanguage(langCode);
+        configService.saveConfig();
+        updateLanguageStyles();
+        reloadUI();
+    }
+
+    private void reloadUI() {
+        try {
+            Stage stage = (Stage) dashboardView.getScene().getWindow();
+            Locale locale = configService.getConfig().getLocale();
+
+            // Standard ResourceBundle loading
+            ResourceBundle bundle = ResourceBundle.getBundle("com.github.konradcz2001.updatetracker.messages", locale);
+
+            FXMLLoader loader = new FXMLLoader(UpdateTrackerApp.class.getResource("main-view.fxml"), bundle);
+            Scene scene = new Scene(loader.load(), 1100, 650);
+
+            if (configService.getConfig().isDarkMode()) {
+                scene.getRoot().getStyleClass().add("dark-mode");
+            }
+
+            stage.setScene(scene);
+            stage.setTitle(bundle.getString("app.title"));
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // --- Helper Method for Dialog Styling ---
+    private void styleDialog(Dialog<?> dialog) {
+        DialogPane pane = dialog.getDialogPane();
+        String cssUrl = com.github.konradcz2001.updatetracker.UpdateTrackerApp.class
+                .getResource("style.css")
+                .toExternalForm();
+
+        pane.getStylesheets().add(cssUrl);
+
+        if (configService.getConfig().isDarkMode()) {
+            pane.getStyleClass().add("dark-mode");
+        }
+    }
+
+    private void updateLanguageStyles() {
+        String currentLang = configService.getConfig().getLanguage();
+
+        if (languageContainer == null) return;
+
+        for (javafx.scene.Node node : languageContainer.getChildren()) {
+            if (node instanceof Button button) {
+                Object userData = button.getUserData();
+
+                button.getStyleClass().remove("active");
+
+                if (userData != null && userData.toString().equals(currentLang)) {
+                    button.getStyleClass().add("active");
+                }
+            }
+        }
+    }
+
+    @FXML
+    private void onToggleThemeClick() {
+        boolean isDark = configService.getConfig().isDarkMode();
+        boolean newMode = !isDark;
+
+        configService.getConfig().setDarkMode(newMode);
+        configService.saveConfig();
+
+        applyThemeMode(newMode);
+        updateThemeIcon(newMode);
+    }
+
+    private void applyThemeMode(boolean isDark) {
+        Scene scene = dashboardView.getScene();
+        if (scene != null) {
+            if (isDark) {
+                if (!scene.getRoot().getStyleClass().contains("dark-mode")) {
+                    scene.getRoot().getStyleClass().add("dark-mode");
+                }
+            } else {
+                scene.getRoot().getStyleClass().remove("dark-mode");
+            }
+        }
+    }
+
+    private void updateThemeIcon(boolean isDark) {
+        if (isDark) {
+            themeIcon.setIconLiteral("mdmz-wb_sunny");
+        } else {
+            themeIcon.setIconLiteral("mdal-brightness_3");
+        }
     }
 }

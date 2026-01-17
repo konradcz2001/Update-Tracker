@@ -5,6 +5,8 @@ import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.concurrent.Worker;
 import javafx.scene.control.Alert;
+import javafx.scene.control.Dialog;
+import javafx.scene.control.DialogPane;
 import javafx.scene.control.Label;
 import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
@@ -20,9 +22,13 @@ import java.util.regex.Pattern;
 public class ScanService {
 
     private final ScraperService scraperService;
+    private final ResourceBundle resources;
+    private final ConfigService configService;
 
-    public ScanService(ScraperService scraperService) {
+    public ScanService(ScraperService scraperService, ResourceBundle resources, ConfigService configService) {
         this.scraperService = scraperService;
+        this.resources = resources;
+        this.configService = configService;
     }
 
     public Task<Void> createScanTask(List<TrackedProgram> programList, Label statusLabel, Runnable onUpdateCallback, Runnable onScanFinishedCallback) {
@@ -57,7 +63,7 @@ public class ScanService {
 
                         int current = processedCount.incrementAndGet();
                         updateProgress(current, total);
-                        Platform.runLater(() -> statusLabel.setText("Scanned " + current + "/" + total + " (" + program.getName() + ")"));
+                        Platform.runLater(() -> statusLabel.setText(String.format(resources.getString("dialog.scan.progress"), current, total, program.getName())));
                     }, executor);
 
                     futures.add(future);
@@ -72,7 +78,7 @@ public class ScanService {
                 }
 
                 updateProgress(total, total);
-                updateMessage("Finalizing results...");
+                updateMessage(resources.getString("dialog.scan.finalizing"));
 
                 Platform.runLater(() -> {
                     if (onScanFinishedCallback != null) onScanFinishedCallback.run();
@@ -234,10 +240,11 @@ public class ScanService {
     private void showScanResults(List<TrackedProgram> failedPrograms, int updatesFound) {
         if (!failedPrograms.isEmpty()) {
             Alert alert = new Alert(Alert.AlertType.WARNING);
-            alert.setTitle("Scan Completed with Errors");
-            alert.setHeaderText("Failed to check " + failedPrograms.size() + " programs");
+            styleDialog(alert);
+            alert.setTitle(resources.getString("dialog.scan.error.title"));
+            alert.setHeaderText(String.format(resources.getString("dialog.scan.error.header"), failedPrograms.size()));
 
-            StringBuilder sb = new StringBuilder("Could not check:\n");
+            StringBuilder sb = new StringBuilder(resources.getString("dialog.scan.error.content") + "\n");
             synchronized (failedPrograms) {
                 failedPrograms.sort((p1, p2) -> p1.getName().compareToIgnoreCase(p2.getName()));
                 for (TrackedProgram p : failedPrograms) sb.append("- ").append(p.getName()).append("\n");
@@ -246,9 +253,24 @@ public class ScanService {
             alert.showAndWait();
         } else {
             Alert alert = new Alert(Alert.AlertType.INFORMATION);
-            alert.setTitle("Scan Completed");
-            alert.setContentText("Scanning finished. Updates found: " + updatesFound);
+            styleDialog(alert);
+            alert.setTitle(resources.getString("dialog.scan.complete.title"));
+            alert.setContentText(String.format(resources.getString("dialog.scan.complete.content"), updatesFound));
             alert.showAndWait();
+        }
+    }
+
+    // --- Helper Method for Dialog Styling ---
+    private void styleDialog(Dialog<?> dialog) {
+        DialogPane pane = dialog.getDialogPane();
+        String cssUrl = com.github.konradcz2001.updatetracker.UpdateTrackerApp.class
+                .getResource("style.css")
+                .toExternalForm();
+
+        pane.getStylesheets().add(cssUrl);
+
+        if (configService.getConfig().isDarkMode()) {
+            pane.getStyleClass().add("dark-mode");
         }
     }
 }

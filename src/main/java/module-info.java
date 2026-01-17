@@ -7,6 +7,8 @@ module com.github.konradcz2001.updatetracker {
     requires jdk.jsobject;
     requires java.desktop;
     requires java.logging;
+    requires org.kordamp.ikonli.javafx;
+    requires org.kordamp.ikonli.material2;
 
 
     opens com.github.konradcz2001.updatetracker to javafx.fxml;

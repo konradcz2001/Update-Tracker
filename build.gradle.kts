@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.github.konradcz2001"
-version = "1.1.0"
+version = "1.2.0"
 
 repositories {
     mavenCentral()
@@ -32,7 +32,7 @@ application {
 }
 
 javafx {
-    version = "21.0.6"
+    version = "21.0.9"
     modules = listOf("javafx.controls", "javafx.fxml", "javafx.web")
 }
 
@@ -41,6 +41,9 @@ dependencies {
     implementation("org.jsoup:jsoup:1.17.2")
     // JSON processing library
     implementation("com.fasterxml.jackson.core:jackson-databind:2.16.1")
+    // --- Ikonli (Icons) ---
+    implementation("org.kordamp.ikonli:ikonli-javafx:12.3.1")
+    implementation("org.kordamp.ikonli:ikonli-material2-pack:12.3.1")
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:${junitVersion}")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:${junitVersion}")
@@ -69,11 +72,11 @@ jlink {
     jpackage {
         imageName = "UpdateTracker"
         installerName = "UpdateTrackerSetup"
-        appVersion = "1.1.0"
+        appVersion = "1.2.0"
 
         installerType = "msi"
 
-        icon = "src/main/resources/app_icon.ico"
+        icon = "src/main/resources/com/github/konradcz2001/updatetracker/app_icon.ico"
 
         if (org.gradle.internal.os.OperatingSystem.current().isWindows()) {
             installerOptions.add("--win-dir-chooser")
