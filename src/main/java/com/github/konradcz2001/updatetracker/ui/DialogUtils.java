@@ -9,6 +9,7 @@ import java.util.Objects;
 
 /**
  * Utility class for applying common styles to dialogs across the application.
+ * Ensures consistent theme application (Light/Dark mode).
  */
 public class DialogUtils {
 

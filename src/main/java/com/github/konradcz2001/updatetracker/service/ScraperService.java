@@ -7,14 +7,24 @@ import org.jsoup.select.Elements;
 
 import java.io.IOException;
 
+/**
+ * Service for fetching web content using Jsoup.
+ * Used for static websites where JavaScript execution is not required.
+ */
 public class ScraperService {
 
+    /**
+     * Connects to the URL and extracts text matching the CSS selector.
+     */
     public String fetchText(TrackedProgram program) throws IOException {
         Document doc = fetchDocument(program.getUrl());
         return extractTextFromDocument(doc, program.getCssSelector());
     }
 
-    // Protected so we can mock/override it if necessary, or just test extraction separately
+    /**
+     * Fetches the DOM with standard browser-like user agent headers.
+     * Protected to allow mocking in tests.
+     */
     protected Document fetchDocument(String url) throws IOException {
         return Jsoup.connect(url)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")

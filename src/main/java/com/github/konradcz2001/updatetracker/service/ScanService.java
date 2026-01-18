@@ -1,7 +1,6 @@
 package com.github.konradcz2001.updatetracker.service;
 
 import com.github.konradcz2001.updatetracker.TrackedProgram;
-import com.github.konradcz2001.updatetracker.ui.DialogUtils;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.concurrent.Worker;
@@ -20,6 +19,12 @@ import java.util.regex.Pattern;
 
 import static com.github.konradcz2001.updatetracker.ui.DialogUtils.styleDialog;
 
+/**
+ * Core service for scanning updates.
+ * Implements a hybrid approach:
+ * 1. Fast scraping using Jsoup (HTTP Request).
+ * 2. Fallback to WebView (Headless Browser) if Jsoup fails (e.g., dynamic content/SPA).
+ */
 public class ScanService {
 
     private final ScraperService scraperService;
@@ -32,6 +37,10 @@ public class ScanService {
         this.configService = configService;
     }
 
+    /**
+     * Creates the main scanning task to be executed on a background thread.
+     * Utilizes a thread pool to scan multiple programs concurrently.
+     */
     public Task<Void> createScanTask(List<TrackedProgram> programList, Label statusLabel, Runnable onUpdateCallback, Runnable onScanFinishedCallback) {
         return new Task<>() {
             @Override
@@ -55,6 +64,7 @@ public class ScanService {
                         if (success) {
                             String curr = program.getCurrentVersion();
                             String last = program.getLastDownloadedVersion();
+                            // Mark as update found if versions differ and it's not a fresh (N/A) program
                             if (!curr.equals(last) && !curr.equals("N/A")) {
                                 updatesFound.incrementAndGet();
                             }
@@ -70,6 +80,7 @@ public class ScanService {
                     futures.add(future);
                 }
 
+                // Wait for all scans to complete
                 try {
                     CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
                 } catch (Exception e) {
@@ -99,7 +110,7 @@ public class ScanService {
 
     /**
      * Checks a single program for updates.
-     * Made public for testability.
+     * Tries Jsoup first, then falls back to Browser.
      */
     public boolean checkProgramUpdate(TrackedProgram program, Runnable onUpdateCallback) {
         if (program.getUrl() == null || program.getUrl().isEmpty()) return true;
@@ -107,6 +118,7 @@ public class ScanService {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
 
         try {
+            // Attempt fast static analysis
             String fullText = scraperService.fetchText(program);
 
             if (fullText.isEmpty()) {
@@ -129,11 +141,17 @@ public class ScanService {
         }
     }
 
+    /**
+     * Uses a headless JavaFX WebView to render the page and extract text via JavaScript.
+     * This is required for Single Page Applications (SPA) or sites protected by simple bot detection.
+     */
     private void checkUpdateWithBrowser(TrackedProgram program, CompletableFuture<Boolean> future, Runnable onUpdateCallback) {
         Platform.runLater(() -> {
             WebView hiddenBrowser = new WebView();
             WebEngine webEngine = hiddenBrowser.getEngine();
             webEngine.setCreatePopupHandler(null);
+
+            // Disable media to save bandwidth and speed up loading
             webEngine.setUserStyleSheetLocation("data:text/css," +
                     "img, video, canvas, svg, object, iframe, .ads, .ad {" +
                     "   display: none !important;" +
@@ -151,7 +169,7 @@ public class ScanService {
                             System.out.println("Browser Timeout for " + program.getName() + ". Attempting forced extraction...");
                             webEngine.getLoadWorker().cancel();
                             extractTextFromBrowser(webEngine, program, future, onUpdateCallback);
-                            hiddenBrowser.setPageFill(null);
+                            hiddenBrowser.setPageFill(null); // Help GC
                         }
                     });
                 }
@@ -160,6 +178,7 @@ public class ScanService {
             webEngine.getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
                 if (newState == Worker.State.SUCCEEDED) {
                     timeoutTimer.cancel();
+                    // Small delay to allow JS frameworks (React/Vue) to render DOM
                     new Timer().schedule(new TimerTask() {
                         @Override
                         public void run() {
@@ -201,9 +220,13 @@ public class ScanService {
         }
     }
 
+    /**
+     * Applies the stored Regex to the fetched text to extract the version number.
+     */
     private boolean processScrapedText(TrackedProgram program, String fullText, Runnable onUpdateCallback) {
         if (program.getVersionRegex() != null && !program.getVersionRegex().isEmpty()) {
             try {
+                // Handle visual bullets that might confuse regex
                 String flexibleRegex = program.getVersionRegex().replace("•", ".");
                 Pattern pattern = Pattern.compile(flexibleRegex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.DOTALL);
                 java.util.regex.Matcher matcher = pattern.matcher(fullText);

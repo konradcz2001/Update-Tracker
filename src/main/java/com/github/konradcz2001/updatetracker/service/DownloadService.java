@@ -9,6 +9,10 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ResourceBundle;
 
+/**
+ * Service responsible for handling file downloads.
+ * Provides logic to resolve dynamic URLs, suggest filenames, and perform the download task.
+ */
 public class DownloadService {
 
     /**
@@ -33,6 +37,9 @@ public class DownloadService {
         };
     }
 
+    /**
+     * Suggests a filename based on the URL or falls back to a sanitized program name.
+     */
     public String suggestFilename(String urlString, String programName) {
         // Try to guess filename from URL
         String proposedName = urlString.substring(urlString.lastIndexOf('/') + 1);
@@ -50,16 +57,17 @@ public class DownloadService {
         return proposedName;
     }
 
+    /**
+     * Resolves a download URL that might contain version placeholders.
+     * E.g., "https://example.com/file_v{version}.zip" -> "https://example.com/file_v1.0.zip"
+     */
     public String resolveDownloadUrl(String urlTemplate, String version) {
         if (urlTemplate == null || urlTemplate.isEmpty()) {
             return null;
         }
-        // Check if the URL contains the placeholder marker
         if (urlTemplate.contains("{version}")) {
-            // Replace marker with the actual version number
             return urlTemplate.replace("{version}", version);
         }
-        // If no marker, return the static URL as is
         return urlTemplate;
     }
 }

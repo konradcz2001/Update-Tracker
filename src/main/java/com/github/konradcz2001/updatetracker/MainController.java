@@ -29,6 +29,10 @@ import java.util.ResourceBundle;
 
 import static com.github.konradcz2001.updatetracker.ui.DialogUtils.styleDialog;
 
+/**
+ * Main Controller class handling UI interactions.
+ * Connects the FXML views with backend services (Scan, Download, Storage).
+ */
 public class MainController implements Initializable {
 
     // --- Dependencies ---
@@ -209,6 +213,10 @@ public class MainController implements Initializable {
         tableManager.requestFocus();
     }
 
+    /**
+     * Resolves the download URL via a headless browser interaction (simulating a click)
+     * or by resolving a direct link.
+     */
     private void resolveAndDownload(TrackedProgram program) {
         String targetPageUrl = program.getUrl();
 
@@ -231,6 +239,7 @@ public class MainController implements Initializable {
                 if (newState == Worker.State.SUCCEEDED) {
                     browserManager.getEngine().getLoadWorker().stateProperty().removeListener(this);
 
+                    // Wait for page to be fully interactive
                     new java.util.Timer().schedule(new java.util.TimerTask() {
                         @Override
                         public void run() {
@@ -250,7 +259,7 @@ public class MainController implements Initializable {
         try {
             String selector = program.getDownloadSelector();
 
-            // Script wrapped in an IIFE
+            // Script wrapped in an IIFE to simulate a click or extract the href
             String script =
                     "(function() { " +
                             "  var el = document.querySelector('" + selector.replace("'", "\\'") + "');" +

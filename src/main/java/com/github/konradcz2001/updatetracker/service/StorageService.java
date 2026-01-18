@@ -13,6 +13,10 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Persists the list of tracked programs to a JSON file.
+ * Handles determining the correct storage location based on the Operating System.
+ */
 public class StorageService {
     private static final String FILE_NAME = "programs.json";
     private static final String APP_FOLDER_NAME = "UpdateTracker";
@@ -24,15 +28,18 @@ public class StorageService {
         objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
     }
 
+    /**
+     * Resolves the storage file location.
+     * Windows: %APPDATA%\UpdateTracker
+     * Unix/Mac: ~/.UpdateTracker
+     */
     private File getDataFile() {
         String appData = System.getenv("APPDATA");
         Path folderPath;
 
         if (appData != null) {
-            // Windows: C:\Users\USERNAME\AppData\Roaming\UpdateTracker
             folderPath = Paths.get(appData, APP_FOLDER_NAME);
         } else {
-            // Linux/Mac: /home/USERNAME/.UpdateTracker
             folderPath = Paths.get(System.getProperty("user.home"), "." + APP_FOLDER_NAME);
         }
 

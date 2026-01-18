@@ -11,6 +11,10 @@ import javafx.scene.control.*;
 import java.util.Comparator;
 import java.util.ResourceBundle;
 
+/**
+ * Manages the TableView displaying tracked programs.
+ * Handles sorting, row styling (highlighting updates), and button state binding based on selection.
+ */
 public class ProgramTableManager {
 
     private static final PseudoClass OUTDATED_PSEUDO_CLASS = PseudoClass.getPseudoClass("outdated");
@@ -95,6 +99,10 @@ public class ProgramTableManager {
         }, selectionModel.selectedItemProperty()));
     }
 
+    /**
+     * Custom comparator that prioritizes programs with available updates (Outdated > Up-to-date),
+     * then sorts alphabetically by name.
+     */
     private Comparator<TrackedProgram> createProgramComparator() {
         return (p1, p2) -> {
             boolean p1HasUpdate = !p1.getCurrentVersion().equals(p1.getLastDownloadedVersion())
@@ -122,6 +130,7 @@ public class ProgramTableManager {
         row.selectedProperty().addListener((obs, wasSelected, isSelected) -> updateRowStyle(row));
 
         row.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, event -> {
+            // Allow deselecting by clicking on the selected row again
             if (!row.isEmpty() && event.getButton() == javafx.scene.input.MouseButton.PRIMARY) {
                 if (row.isSelected()) {
                     programTable.getSelectionModel().clearSelection();
@@ -146,6 +155,8 @@ public class ProgramTableManager {
                 String curr = item.getCurrentVersion();
                 String last = item.getLastDownloadedVersion();
                 boolean isOutdated = !curr.equals(last) && !curr.equals("N/A");
+
+                // Apply 'outdated' CSS pseudo-class for visual highlighting
                 row.pseudoClassStateChanged(OUTDATED_PSEUDO_CLASS, isOutdated);
             }
         }

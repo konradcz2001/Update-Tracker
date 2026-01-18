@@ -8,6 +8,10 @@ import javafx.stage.Stage;
 
 import java.util.ResourceBundle;
 
+/**
+ * Main JavaFX Application class.
+ * Handles the initialization of the primary stage, loading resources, and applying themes.
+ */
 public class UpdateTrackerApp extends Application {
 
     @Override
@@ -15,7 +19,7 @@ public class UpdateTrackerApp extends Application {
         try {
             ConfigService configService = new ConfigService();
 
-            // Use standard ResourceBundle loading (Environment handles UTF-8)
+            // Load localized messages based on user configuration
             ResourceBundle bundle = ResourceBundle.getBundle(
                     "com.github.konradcz2001.updatetracker.messages",
                     configService.getConfig().getLocale()
@@ -28,6 +32,7 @@ public class UpdateTrackerApp extends Application {
 
             Scene scene = new Scene(fxmlLoader.load(), 1100, 650);
 
+            // Apply dark mode if enabled in settings
             if (configService.getConfig().isDarkMode()) {
                 scene.getRoot().getStyleClass().add("dark-mode");
             }
@@ -41,7 +46,6 @@ public class UpdateTrackerApp extends Application {
             stage.show();
 
         } catch (Exception e) {
-            // Log critical startup errors
             System.err.println("CRITICAL ERROR IN START METHOD:");
             e.printStackTrace();
             throw new RuntimeException(e);

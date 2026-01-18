@@ -6,6 +6,10 @@ import javafx.beans.property.StringProperty;
 
 import java.time.LocalDate;
 
+/**
+ * Model class representing a single software item tracked by the application.
+ * Supports Jackson serialization for storage and JavaFX properties for UI binding.
+ */
 public class TrackedProgram {
     private final StringProperty name;
     private final StringProperty currentVersion;
@@ -19,7 +23,9 @@ public class TrackedProgram {
     private String downloadSelector = "";
     private String downloadUrl = "";
 
-    // Default constructor for Jackson
+    /**
+     * Default constructor required for Jackson deserialization.
+     */
     public TrackedProgram() {
         this.name = new SimpleStringProperty("");
         this.currentVersion = new SimpleStringProperty("N/A");
