@@ -1,12 +1,11 @@
 package com.github.konradcz2001.updatetracker.service;
 
 import com.github.konradcz2001.updatetracker.TrackedProgram;
+import com.github.konradcz2001.updatetracker.ui.DialogUtils;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.concurrent.Worker;
 import javafx.scene.control.Alert;
-import javafx.scene.control.Dialog;
-import javafx.scene.control.DialogPane;
 import javafx.scene.control.Label;
 import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
@@ -91,7 +90,18 @@ public class ScanService {
         };
     }
 
-    private boolean checkProgramUpdate(TrackedProgram program, Runnable onUpdateCallback) {
+    /**
+     * Overload for testing or simple checks without a callback.
+     */
+    public boolean checkProgramUpdate(TrackedProgram program) {
+        return checkProgramUpdate(program, null);
+    }
+
+    /**
+     * Checks a single program for updates.
+     * Made public for testability.
+     */
+    public boolean checkProgramUpdate(TrackedProgram program, Runnable onUpdateCallback) {
         if (program.getUrl() == null || program.getUrl().isEmpty()) return true;
 
         CompletableFuture<Boolean> future = new CompletableFuture<>();
