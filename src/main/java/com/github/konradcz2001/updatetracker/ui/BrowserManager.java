@@ -13,6 +13,8 @@ import java.util.Optional;
 import java.util.ResourceBundle;
 import java.util.function.Consumer;
 
+import static com.github.konradcz2001.updatetracker.ui.DialogUtils.styleDialog;
+
 public class BrowserManager {
 
     private final WebView webView;
@@ -268,7 +270,7 @@ public class BrowserManager {
                     String currentPageUrl = engine.getLocation();
 
                     Dialog<String> dialog = new Dialog<>();
-                    styleDialog(dialog);
+                    styleDialog(dialog, configService);
                     dialog.setTitle(resources.getString("dialog.config.download.title"));
                     dialog.setHeaderText(resources.getString("dialog.config.download.header"));
 
@@ -303,7 +305,7 @@ public class BrowserManager {
                         onSaveCallback.accept(null);
 
                         Alert info = new Alert(Alert.AlertType.INFORMATION, String.format(resources.getString("dialog.config.saved"), (finalPageUrl.isEmpty() ? "(Default)" : finalPageUrl)));
-                        styleDialog(info);
+                        styleDialog(info, configService);
                         info.setHeaderText(null);
                         info.showAndWait();
 
@@ -313,7 +315,7 @@ public class BrowserManager {
                 } else if (currentProgram != null) {
                     String safeText = (textContent != null) ? textContent.trim() : "";
                     Dialog<String> dialog = new Dialog<>();
-                    styleDialog(dialog);
+                    styleDialog(dialog, configService);
                     dialog.setTitle(resources.getString("dialog.config.version.title"));
                     dialog.setHeaderText(resources.getString("dialog.config.version.header"));
 
@@ -353,7 +355,7 @@ public class BrowserManager {
                         onSaveCallback.accept(null);
 
                         Alert alert = new Alert(Alert.AlertType.INFORMATION, resources.getString("dialog.config.success"));
-                        styleDialog(alert);
+                        styleDialog(alert, configService);
                         alert.setHeaderText(null);
                         alert.showAndWait();
                         toggleVersionSelectionMode();
@@ -361,20 +363,6 @@ public class BrowserManager {
                 }
                 isDialogOpen = false;
             });
-        }
-    }
-
-    // --- Helper Method for Dialog Styling ---
-    private void styleDialog(Dialog<?> dialog) {
-        DialogPane pane = dialog.getDialogPane();
-        String cssUrl = com.github.konradcz2001.updatetracker.UpdateTrackerApp.class
-                .getResource("style.css")
-                .toExternalForm();
-
-        pane.getStylesheets().add(cssUrl);
-
-        if (configService.getConfig().isDarkMode()) {
-            pane.getStyleClass().add("dark-mode");
         }
     }
 }

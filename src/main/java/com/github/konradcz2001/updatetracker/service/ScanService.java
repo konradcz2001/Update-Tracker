@@ -19,6 +19,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
+import static com.github.konradcz2001.updatetracker.ui.DialogUtils.styleDialog;
+
 public class ScanService {
 
     private final ScraperService scraperService;
@@ -240,7 +242,7 @@ public class ScanService {
     private void showScanResults(List<TrackedProgram> failedPrograms, int updatesFound) {
         if (!failedPrograms.isEmpty()) {
             Alert alert = new Alert(Alert.AlertType.WARNING);
-            styleDialog(alert);
+            styleDialog(alert, configService);
             alert.setTitle(resources.getString("dialog.scan.error.title"));
             alert.setHeaderText(String.format(resources.getString("dialog.scan.error.header"), failedPrograms.size()));
 
@@ -253,24 +255,10 @@ public class ScanService {
             alert.showAndWait();
         } else {
             Alert alert = new Alert(Alert.AlertType.INFORMATION);
-            styleDialog(alert);
+            styleDialog(alert, configService);
             alert.setTitle(resources.getString("dialog.scan.complete.title"));
             alert.setContentText(String.format(resources.getString("dialog.scan.complete.content"), updatesFound));
             alert.showAndWait();
-        }
-    }
-
-    // --- Helper Method for Dialog Styling ---
-    private void styleDialog(Dialog<?> dialog) {
-        DialogPane pane = dialog.getDialogPane();
-        String cssUrl = com.github.konradcz2001.updatetracker.UpdateTrackerApp.class
-                .getResource("style.css")
-                .toExternalForm();
-
-        pane.getStylesheets().add(cssUrl);
-
-        if (configService.getConfig().isDarkMode()) {
-            pane.getStyleClass().add("dark-mode");
         }
     }
 }
