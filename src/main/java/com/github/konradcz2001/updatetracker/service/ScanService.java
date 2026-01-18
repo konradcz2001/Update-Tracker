@@ -275,7 +275,7 @@ public class ScanService {
     private void showScanResults(List<TrackedProgram> failedPrograms, int updatesFound) {
         if (!failedPrograms.isEmpty()) {
             Alert alert = new Alert(Alert.AlertType.WARNING);
-            styleDialog(alert, configService);
+            styleDialog(alert, configService, resources);
             alert.setTitle(resources.getString("dialog.scan.error.title"));
             alert.setHeaderText(String.format(resources.getString("dialog.scan.error.header"), failedPrograms.size()));
 
@@ -288,7 +288,7 @@ public class ScanService {
             alert.showAndWait();
         } else {
             Alert alert = new Alert(Alert.AlertType.INFORMATION);
-            styleDialog(alert, configService);
+            styleDialog(alert, configService, resources);
             alert.setTitle(resources.getString("dialog.scan.complete.title"));
             alert.setContentText(String.format(resources.getString("dialog.scan.complete.content"), updatesFound));
             alert.showAndWait();

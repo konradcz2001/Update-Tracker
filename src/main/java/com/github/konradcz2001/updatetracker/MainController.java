@@ -145,7 +145,7 @@ public class MainController implements Initializable {
     @FXML
     private void onScanUpdatesClick() {
         Dialog<ButtonType> progressDialog = new Dialog<>();
-        styleDialog(progressDialog, configService);
+        styleDialog(progressDialog, configService, resources);
         progressDialog.setTitle(resources.getString("dialog.scan.title"));
         progressDialog.setHeaderText(resources.getString("dialog.scan.header"));
 
@@ -311,7 +311,7 @@ public class MainController implements Initializable {
 
                 downloadTask.setOnSucceeded(e -> {
                     Alert info = new Alert(Alert.AlertType.INFORMATION, resources.getString("dialog.download.success"));
-                    styleDialog(info, configService);
+                    styleDialog(info, configService, resources);
                     info.setHeaderText(null);
                     info.show();
 
@@ -348,7 +348,7 @@ public class MainController implements Initializable {
     private void handleDownloadError(TrackedProgram program) {
         Platform.runLater(() -> {
             Alert alert = new Alert(Alert.AlertType.WARNING);
-            styleDialog(alert, configService);
+            styleDialog(alert, configService, resources);
             alert.setTitle(resources.getString("dialog.download.fail.title"));
             alert.setHeaderText(resources.getString("dialog.download.fail.header"));
             alert.setContentText(resources.getString("dialog.download.fail.content"));
@@ -372,7 +372,7 @@ public class MainController implements Initializable {
     @FXML
     private void onAddProgramClick() {
         TextInputDialog dialog = new TextInputDialog();
-        styleDialog(dialog, configService);
+        styleDialog(dialog, configService, resources);
         dialog.setTitle(resources.getString("dialog.add.title"));
         dialog.setHeaderText(resources.getString("dialog.add.header"));
         dialog.setContentText(resources.getString("dialog.add.content"));
@@ -398,7 +398,7 @@ public class MainController implements Initializable {
         if (selected == null) return;
 
         TextInputDialog dialog = new TextInputDialog(selected.getName());
-        styleDialog(dialog, configService);
+        styleDialog(dialog, configService, resources);
         dialog.setTitle(resources.getString("dialog.edit.title"));
         dialog.setHeaderText(String.format(resources.getString("dialog.edit.header"), selected.getName()));
         dialog.setContentText(resources.getString("dialog.edit.content"));
@@ -426,7 +426,7 @@ public class MainController implements Initializable {
 
     private void showError(String title, String content) {
         Alert alert = new Alert(Alert.AlertType.ERROR);
-        styleDialog(alert, configService);
+        styleDialog(alert, configService, resources);
         alert.setTitle(resources.getString("dialog.error.title"));
         alert.setHeaderText(title);
         alert.setContentText(content);
@@ -492,7 +492,7 @@ public class MainController implements Initializable {
         }
 
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        styleDialog(alert, configService);
+        styleDialog(alert, configService, resources);
         alert.setTitle(resources.getString("dialog.about.title"));
 
         alert.setHeaderText(String.format(resources.getString("dialog.about.header"), appVersion));

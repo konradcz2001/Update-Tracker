@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.github.konradcz2001"
-version = "1.2.0"
+version = "1.2.1"
 
 repositories {
     mavenCentral()
@@ -75,7 +75,7 @@ jlink {
     jpackage {
         imageName = "UpdateTracker"
         installerName = "UpdateTrackerSetup"
-        appVersion = "1.2.0"
+        appVersion = "1.2.1"
 
         installerType = "msi"
 

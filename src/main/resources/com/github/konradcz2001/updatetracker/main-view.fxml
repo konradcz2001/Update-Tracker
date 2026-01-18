@@ -71,7 +71,7 @@
                     <Label text="%lbl.configuring" style="-fx-font-weight: bold; -fx-font-size: 16px;"/>
                     <Label fx:id="editorProgramNameLabel" text="Program Name" style="-fx-font-size: 16px; -fx-text-fill: -color-accent;"/>
                     <Region HBox.hgrow="ALWAYS"/>
-                    <Button text="%btn.cancel" onAction="#onBackToDashboard"/>
+                    <Button text="%btn.back" onAction="#onBackToDashboard"/>
                 </HBox>
 
                 <HBox spacing="10" alignment="CENTER_LEFT" styleClass="editor-toolbar">
