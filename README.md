@@ -1,7 +1,7 @@
 # Update Tracker
 
 <img src="src/main/resources/com/github/konradcz2001/updatetracker/app_icon.png" width="128" alt="App Icon">
-<br><br>
+<br>
 Update Tracker is a modern JavaFX desktop application designed to help you keep track of software updates, game versions, or any other text-based information on the web. It allows you to monitor changes on specific web pages and notifies you when a new version is detected.
 
 ## ✨ Features
