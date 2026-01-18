@@ -296,7 +296,7 @@ public class BrowserManager {
             String currentPageUrl = engine.getLocation();
 
             Dialog<String> dialog = new Dialog<>();
-            styleDialog(dialog, configService);
+            styleDialog(dialog, configService, resources);
             dialog.setTitle(resources.getString("dialog.config.download.title"));
             dialog.setHeaderText(resources.getString("dialog.config.download.header"));
 
@@ -331,7 +331,7 @@ public class BrowserManager {
                 onSaveCallback.accept(null);
 
                 Alert info = new Alert(Alert.AlertType.INFORMATION, String.format(resources.getString("dialog.config.saved"), (finalPageUrl.isEmpty() ? "(Default)" : finalPageUrl)));
-                styleDialog(info, configService);
+                styleDialog(info, configService, resources);
                 info.setHeaderText(null);
                 info.showAndWait();
 
@@ -342,7 +342,7 @@ public class BrowserManager {
         private void handleVersionSelection(String cssSelector, String textContent) {
             String safeText = (textContent != null) ? textContent.trim() : "";
             Dialog<String> dialog = new Dialog<>();
-            styleDialog(dialog, configService);
+            styleDialog(dialog, configService, resources);
             dialog.setTitle(resources.getString("dialog.config.version.title"));
             dialog.setHeaderText(resources.getString("dialog.config.version.header"));
 
@@ -383,7 +383,7 @@ public class BrowserManager {
                 onSaveCallback.accept(null);
 
                 Alert alert = new Alert(Alert.AlertType.INFORMATION, resources.getString("dialog.config.success"));
-                styleDialog(alert, configService);
+                styleDialog(alert, configService, resources);
                 alert.setHeaderText(null);
                 alert.showAndWait();
                 toggleVersionSelectionMode();
