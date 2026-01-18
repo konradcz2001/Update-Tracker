@@ -2,8 +2,18 @@ package com.github.konradcz2001.updatetracker.util;
 
 import java.util.regex.Pattern;
 
+/**
+ * Utility class for automatically generating and testing Regular Expressions.
+ * Used to extract version numbers from arbitrary text content found on web pages.
+ */
 public class VersionRegexUtils {
 
+    /**
+     * Generates a regex that extracts the selected version string from the full text.
+     * Strategies:
+     * 1. Smart Self-Healing (if the version is continuous).
+     * 2. Multi-Part (if the user selected multiple disconnected words).
+     */
     public static String createRegexFromSelection(String fullText, String selectedVersion) {
         if (fullText.contains(selectedVersion)) {
             return createSmartSelfHealingRegex(fullText, selectedVersion);
@@ -36,6 +46,11 @@ public class VersionRegexUtils {
         return false;
     }
 
+    /**
+     * Creates a regex that anchors to the text immediately preceding the version.
+     * It attempts to be "self-healing" by not hardcoding the exact version digits,
+     * allowing it to match future versions (e.g., "Version 1.0" -> "Version .*").
+     */
     private static String createSmartSelfHealingRegex(String fullText, String selectedVersion) {
         int index = fullText.indexOf(selectedVersion);
         if (index == -1) return "(.*)";
@@ -48,6 +63,7 @@ public class VersionRegexUtils {
 
         String candidateRegex = regexPrefix + regexSuffix;
 
+        // Verify validity; if it fails, fallback to strict matching
         if (!testRegex(fullText, candidateRegex, selectedVersion)) {
             regexPrefix = makeSafeRegex(prefix);
         }
@@ -94,6 +110,10 @@ public class VersionRegexUtils {
         return regexBuilder.toString();
     }
 
+    /**
+     * Finds the nearest meaningful anchor text before the version.
+     * Skips generic prefixes like "Current Version: ".
+     */
     private static String generateSmartPrefix(String prefix) {
         int lastDigitIndex = -1;
         for (int i = prefix.length() - 1; i >= 0; i--) {

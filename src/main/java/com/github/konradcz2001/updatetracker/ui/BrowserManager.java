@@ -13,6 +13,13 @@ import java.util.Optional;
 import java.util.ResourceBundle;
 import java.util.function.Consumer;
 
+import static com.github.konradcz2001.updatetracker.ui.DialogUtils.styleDialog;
+
+/**
+ * Manages the embedded WebView for element selection and visual feedback.
+ * Bridges Java and JavaScript to allow users to click elements on web pages
+ * and retrieve their CSS selectors and content.
+ */
 public class BrowserManager {
 
     private final WebView webView;
@@ -50,6 +57,8 @@ public class BrowserManager {
     private void initialize() {
         engine.setCreatePopupHandler(null);
         engine.getHistory().setMaxSize(10);
+
+        // Hide ads and media to improve readability and performance
         engine.setUserStyleSheetLocation("data:text/css," +
                 "img, video, canvas, svg, object, iframe, .ads, .ad {" +
                 "   display: none !important;" +
@@ -60,6 +69,7 @@ public class BrowserManager {
             if (newState == javafx.concurrent.Worker.State.SUCCEEDED) {
                 urlField.setText(engine.getLocation());
 
+                // Expose Java object to JavaScript environment
                 JSObject window = (JSObject) engine.executeScript("window");
                 window.setMember("javaApp", bridge);
 
@@ -160,6 +170,13 @@ public class BrowserManager {
         return engine;
     }
 
+    /**
+     * Injects JavaScript logic into the current page.
+     * 1. Adds CSS for highlighting elements.
+     * 2. Adds event listeners for mouseover (highlight) and click (select).
+     * 3. Calculates the unique CSS selector path for the clicked element.
+     * 4. Calls back to Java via the 'javaApp' bridge.
+     */
     private void injectSelectorScript() {
         String script = """
         (function() {
@@ -257,6 +274,9 @@ public class BrowserManager {
         }
     }
 
+    /**
+     * Callback interface exposed to JavaScript.
+     */
     public class JavaBridge {
         public void onElementSelected(String cssSelector, String textContent) {
             Platform.runLater(() -> {
@@ -264,117 +284,110 @@ public class BrowserManager {
                 isDialogOpen = true;
 
                 if (isDownloadSelectionMode && currentProgram != null) {
-
-                    String currentPageUrl = engine.getLocation();
-
-                    Dialog<String> dialog = new Dialog<>();
-                    styleDialog(dialog);
-                    dialog.setTitle(resources.getString("dialog.config.download.title"));
-                    dialog.setHeaderText(resources.getString("dialog.config.download.header"));
-
-                    ButtonType saveButtonType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
-                    dialog.getDialogPane().getButtonTypes().addAll(saveButtonType, ButtonType.CANCEL);
-
-                    VBox content = new VBox(10);
-                    Label label = new Label(resources.getString("dialog.config.download.content"));
-
-                    TextField urlField = new TextField(currentPageUrl);
-                    urlField.setPromptText("https://example.com/v{version}/downloads");
-                    urlField.setPrefWidth(450);
-
-                    content.getChildren().addAll(label, urlField);
-                    dialog.getDialogPane().setContent(content);
-                    Platform.runLater(urlField::requestFocus);
-
-                    dialog.setResultConverter(btn -> btn == saveButtonType ? urlField.getText() : null);
-                    Optional<String> result = dialog.showAndWait();
-
-                    result.ifPresent(inputPageUrl -> {
-                        String finalPageUrl = inputPageUrl.trim();
-
-                        currentProgram.setDownloadSelector(cssSelector);
-
-                        if (!finalPageUrl.isEmpty()) {
-                            currentProgram.setDownloadUrl(finalPageUrl);
-                        } else {
-                            currentProgram.setDownloadUrl(null);
-                        }
-
-                        onSaveCallback.accept(null);
-
-                        Alert info = new Alert(Alert.AlertType.INFORMATION, String.format(resources.getString("dialog.config.saved"), (finalPageUrl.isEmpty() ? "(Default)" : finalPageUrl)));
-                        styleDialog(info);
-                        info.setHeaderText(null);
-                        info.showAndWait();
-
-                        toggleDownloadSelectionMode();
-                    });
-
+                    handleDownloadSelection(cssSelector);
                 } else if (currentProgram != null) {
-                    String safeText = (textContent != null) ? textContent.trim() : "";
-                    Dialog<String> dialog = new Dialog<>();
-                    styleDialog(dialog);
-                    dialog.setTitle(resources.getString("dialog.config.version.title"));
-                    dialog.setHeaderText(resources.getString("dialog.config.version.header"));
-
-                    ButtonType okButtonType = new ButtonType("OK", ButtonBar.ButtonData.OK_DONE);
-                    dialog.getDialogPane().getButtonTypes().addAll(okButtonType, ButtonType.CANCEL);
-
-                    VBox content = new VBox(10);
-                    Label topLabel = new Label(resources.getString("dialog.config.version.found"));
-                    TextArea textArea = new TextArea(safeText);
-                    textArea.setWrapText(true);
-                    textArea.setPrefRowCount(5);
-                    textArea.setPrefWidth(400);
-                    Label bottomLabel = new Label(resources.getString("dialog.config.version.instruction"));
-
-                    content.getChildren().addAll(topLabel, textArea, bottomLabel);
-                    dialog.getDialogPane().setContent(content);
-
-                    Platform.runLater(textArea::requestFocus);
-
-                    dialog.setResultConverter(dialogButton -> {
-                        if (dialogButton == okButtonType) return textArea.getText();
-                        return null;
-                    });
-
-                    Optional<String> result = dialog.showAndWait();
-
-                    result.ifPresent(cleanVersion -> {
-                        cleanVersion = cleanVersion.trim();
-                        String regex = VersionRegexUtils.createRegexFromSelection(safeText, cleanVersion);
-
-                        currentProgram.setCssSelector(cssSelector);
-                        currentProgram.setVersionRegex(regex);
-                        currentProgram.setCurrentVersion(cleanVersion);
-                        currentProgram.setLastDownloadedVersion(cleanVersion);
-                        currentProgram.setUrl(engine.getLocation());
-
-                        onSaveCallback.accept(null);
-
-                        Alert alert = new Alert(Alert.AlertType.INFORMATION, resources.getString("dialog.config.success"));
-                        styleDialog(alert);
-                        alert.setHeaderText(null);
-                        alert.showAndWait();
-                        toggleVersionSelectionMode();
-                    });
+                    handleVersionSelection(cssSelector, textContent);
                 }
                 isDialogOpen = false;
             });
         }
-    }
 
-    // --- Helper Method for Dialog Styling ---
-    private void styleDialog(Dialog<?> dialog) {
-        DialogPane pane = dialog.getDialogPane();
-        String cssUrl = com.github.konradcz2001.updatetracker.UpdateTrackerApp.class
-                .getResource("style.css")
-                .toExternalForm();
+        private void handleDownloadSelection(String cssSelector) {
+            String currentPageUrl = engine.getLocation();
 
-        pane.getStylesheets().add(cssUrl);
+            Dialog<String> dialog = new Dialog<>();
+            styleDialog(dialog, configService);
+            dialog.setTitle(resources.getString("dialog.config.download.title"));
+            dialog.setHeaderText(resources.getString("dialog.config.download.header"));
 
-        if (configService.getConfig().isDarkMode()) {
-            pane.getStyleClass().add("dark-mode");
+            ButtonType saveButtonType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
+            dialog.getDialogPane().getButtonTypes().addAll(saveButtonType, ButtonType.CANCEL);
+
+            VBox content = new VBox(10);
+            Label label = new Label(resources.getString("dialog.config.download.content"));
+
+            TextField urlField = new TextField(currentPageUrl);
+            urlField.setPromptText("https://example.com/v{version}/downloads");
+            urlField.setPrefWidth(450);
+
+            content.getChildren().addAll(label, urlField);
+            dialog.getDialogPane().setContent(content);
+            Platform.runLater(urlField::requestFocus);
+
+            dialog.setResultConverter(btn -> btn == saveButtonType ? urlField.getText() : null);
+            Optional<String> result = dialog.showAndWait();
+
+            result.ifPresent(inputPageUrl -> {
+                String finalPageUrl = inputPageUrl.trim();
+
+                currentProgram.setDownloadSelector(cssSelector);
+
+                if (!finalPageUrl.isEmpty()) {
+                    currentProgram.setDownloadUrl(finalPageUrl);
+                } else {
+                    currentProgram.setDownloadUrl(null);
+                }
+
+                onSaveCallback.accept(null);
+
+                Alert info = new Alert(Alert.AlertType.INFORMATION, String.format(resources.getString("dialog.config.saved"), (finalPageUrl.isEmpty() ? "(Default)" : finalPageUrl)));
+                styleDialog(info, configService);
+                info.setHeaderText(null);
+                info.showAndWait();
+
+                toggleDownloadSelectionMode();
+            });
+        }
+
+        private void handleVersionSelection(String cssSelector, String textContent) {
+            String safeText = (textContent != null) ? textContent.trim() : "";
+            Dialog<String> dialog = new Dialog<>();
+            styleDialog(dialog, configService);
+            dialog.setTitle(resources.getString("dialog.config.version.title"));
+            dialog.setHeaderText(resources.getString("dialog.config.version.header"));
+
+            ButtonType okButtonType = new ButtonType("OK", ButtonBar.ButtonData.OK_DONE);
+            dialog.getDialogPane().getButtonTypes().addAll(okButtonType, ButtonType.CANCEL);
+
+            VBox content = new VBox(10);
+            Label topLabel = new Label(resources.getString("dialog.config.version.found"));
+            TextArea textArea = new TextArea(safeText);
+            textArea.setWrapText(true);
+            textArea.setPrefRowCount(5);
+            textArea.setPrefWidth(400);
+            Label bottomLabel = new Label(resources.getString("dialog.config.version.instruction"));
+
+            content.getChildren().addAll(topLabel, textArea, bottomLabel);
+            dialog.getDialogPane().setContent(content);
+
+            Platform.runLater(textArea::requestFocus);
+
+            dialog.setResultConverter(dialogButton -> {
+                if (dialogButton == okButtonType) return textArea.getText();
+                return null;
+            });
+
+            Optional<String> result = dialog.showAndWait();
+
+            result.ifPresent(cleanVersion -> {
+                cleanVersion = cleanVersion.trim();
+                // Generate a regex based on the user's selected text subset
+                String regex = VersionRegexUtils.createRegexFromSelection(safeText, cleanVersion);
+
+                currentProgram.setCssSelector(cssSelector);
+                currentProgram.setVersionRegex(regex);
+                currentProgram.setCurrentVersion(cleanVersion);
+                currentProgram.setLastDownloadedVersion(cleanVersion);
+                currentProgram.setUrl(engine.getLocation());
+
+                onSaveCallback.accept(null);
+
+                Alert alert = new Alert(Alert.AlertType.INFORMATION, resources.getString("dialog.config.success"));
+                styleDialog(alert, configService);
+                alert.setHeaderText(null);
+                alert.showAndWait();
+                toggleVersionSelectionMode();
+            });
         }
     }
 }

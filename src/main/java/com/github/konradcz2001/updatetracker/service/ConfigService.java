@@ -12,36 +12,59 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Locale;
 
+/**
+ * Manages application configuration (settings.json).
+ * Handles loading and saving user preferences like language and theme.
+ */
 public class ConfigService {
     private static final String FILE_NAME = "settings.json";
     private static final String APP_FOLDER_NAME = "UpdateTracker";
     private final ObjectMapper objectMapper;
     private AppConfig config;
+    private final Path configFolder;
 
+    /**
+     * Default constructor uses the system's AppData/Home directory.
+     */
     public ConfigService() {
+        this(getDefaultConfigPath());
+    }
+
+    /**
+     * Constructor for testing purposes or custom paths.
+     * @param configFolder The folder where settings.json will be stored.
+     */
+    public ConfigService(Path configFolder) {
+        this.configFolder = configFolder;
         objectMapper = new ObjectMapper();
         objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
-        // Ignore unknown properties to prevent crashes if file structure changes
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         loadConfig();
     }
 
-    private File getConfigFile() {
+    private static Path getDefaultConfigPath() {
         String appData = System.getenv("APPDATA");
-        Path folderPath = (appData != null)
+        // Windows uses AppData/Roaming, Linux/Mac uses ~/.UpdateTracker
+        return (appData != null)
                 ? Paths.get(appData, APP_FOLDER_NAME)
                 : Paths.get(System.getProperty("user.home"), "." + APP_FOLDER_NAME);
+    }
 
-        if (!Files.exists(folderPath)) {
+    private File getConfigFile() {
+        if (!Files.exists(configFolder)) {
             try {
-                Files.createDirectories(folderPath);
+                Files.createDirectories(configFolder);
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }
-        return folderPath.resolve(FILE_NAME).toFile();
+        return configFolder.resolve(FILE_NAME).toFile();
     }
 
+    /**
+     * Loads the configuration from disk.
+     * Creates a default configuration if the file does not exist or is corrupted.
+     */
     public void loadConfig() {
         File file = getConfigFile();
         if (file.exists()) {
@@ -56,6 +79,9 @@ public class ConfigService {
         }
     }
 
+    /**
+     * Persists the current configuration to disk.
+     */
     public void saveConfig() {
         try {
             objectMapper.writeValue(getConfigFile(), config);
@@ -68,6 +94,9 @@ public class ConfigService {
         return config;
     }
 
+    /**
+     * Inner class representing the structure of the settings file.
+     */
     public static class AppConfig {
         private String language = "en";
         private boolean darkMode = false;

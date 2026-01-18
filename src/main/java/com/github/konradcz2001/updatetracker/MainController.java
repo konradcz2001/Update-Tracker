@@ -2,11 +2,10 @@ package com.github.konradcz2001.updatetracker;
 
 import com.github.konradcz2001.updatetracker.service.*;
 import com.github.konradcz2001.updatetracker.ui.BrowserManager;
+import com.github.konradcz2001.updatetracker.ui.ProgramTableManager;
 import javafx.application.Platform;
-import javafx.beans.binding.Bindings;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.collections.transformation.SortedList;
 import javafx.concurrent.Task;
 import javafx.concurrent.Worker;
 import javafx.fxml.FXML;
@@ -21,18 +20,20 @@ import javafx.scene.layout.VBox;
 import javafx.scene.web.WebView;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
-import javafx.css.PseudoClass;
 import org.kordamp.ikonli.javafx.FontIcon;
 import java.io.File;
 import java.net.URL;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.ResourceBundle;
 
-public class MainController implements Initializable {
+import static com.github.konradcz2001.updatetracker.ui.DialogUtils.styleDialog;
 
-    private static final PseudoClass OUTDATED_PSEUDO_CLASS = PseudoClass.getPseudoClass("outdated");
+/**
+ * Main Controller class handling UI interactions.
+ * Connects the FXML views with backend services (Scan, Download, Storage).
+ */
+public class MainController implements Initializable {
 
     // --- Dependencies ---
     private final StorageService storageService = new StorageService();
@@ -42,6 +43,7 @@ public class MainController implements Initializable {
     private ResourceBundle resources;
     private ScanService scanService;
     private BrowserManager browserManager;
+    private ProgramTableManager tableManager;
 
     // --- UI Elements ---
     @FXML private BorderPane dashboardView;
@@ -84,6 +86,7 @@ public class MainController implements Initializable {
 
         // Initialize services with Resources
         scanService = new ScanService(scraperService, resources, configService);
+
         browserManager = new BrowserManager(
                 webView,
                 urlField,
@@ -95,7 +98,19 @@ public class MainController implements Initializable {
                 configService
         );
 
-        setupTable();
+        // Initialize Table Manager
+        tableManager = new ProgramTableManager(
+                programTable,
+                programList,
+                resources,
+                btnEditName,
+                btnDelete,
+                btnConfigure,
+                btnDownload
+        );
+
+        tableManager.initializeTable(colName, colLastVersion, colDateOld, colDateNew, colCurrentVersion);
+
         loadData();
 
         // Save data whenever the list changes
@@ -112,117 +127,25 @@ public class MainController implements Initializable {
         }
 
         // Ensure the table grabs focus immediately after startup and language switch
-        Platform.runLater(() -> programTable.requestFocus());
+        Platform.runLater(() -> tableManager.requestFocus());
 
         updateLanguageStyles();
         boolean isDark = configService.getConfig().isDarkMode();
         updateThemeIcon(isDark);
     }
 
-    private void setupTable() {
-        colName.setCellValueFactory(cellData -> cellData.getValue().nameProperty());
-        colLastVersion.setCellValueFactory(cellData -> cellData.getValue().lastDownloadedVersionProperty());
-        colDateOld.setCellValueFactory(cellData -> cellData.getValue().dateFoundOldProperty());
-        colDateNew.setCellValueFactory(cellData -> cellData.getValue().dateFoundNewProperty());
-        colCurrentVersion.setCellValueFactory(cellData -> cellData.getValue().currentVersionProperty());
-
-        SortedList<TrackedProgram> sortedList = new SortedList<>(programList);
-
-        // Bind SortedList comparator to TableView comparator
-        sortedList.comparatorProperty().bind(programTable.comparatorProperty());
-
-        programTable.setItems(sortedList);
-        programTable.setPlaceholder(new Label(resources.getString("table.placeholder")));
-        programTable.setRowFactory(this::createRowFactory);
-
-        FXCollections.sort(programList, createProgramComparator());
-
-        programTable.getSortOrder().addListener((javafx.collections.ListChangeListener<TableColumn<TrackedProgram, ?>>) c -> {
-            if (programTable.getSortOrder().isEmpty()) {
-                FXCollections.sort(programList, createProgramComparator());
-            }
-        });
-
-        // Disable buttons when no selection
-        var selectionModel = programTable.getSelectionModel();
-        btnEditName.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
-        btnDelete.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
-        btnConfigure.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
-        btnDownload.disableProperty().bind(Bindings.createBooleanBinding(() -> {
-            TrackedProgram p = selectionModel.getSelectedItem();
-            return p == null || "N/A".equals(p.getCurrentVersion()) || p.getDownloadSelector() == null || p.getDownloadSelector().isEmpty();
-        }, selectionModel.selectedItemProperty()));
-    }
-
-    private Comparator<TrackedProgram> createProgramComparator() {
-        return (p1, p2) -> {
-            boolean p1HasUpdate = !p1.getCurrentVersion().equals(p1.getLastDownloadedVersion())
-                    && !p1.getCurrentVersion().equals("N/A");
-
-            boolean p2HasUpdate = !p2.getCurrentVersion().equals(p2.getLastDownloadedVersion())
-                    && !p2.getCurrentVersion().equals("N/A");
-
-            if (p1HasUpdate && !p2HasUpdate) return -1;
-            if (!p1HasUpdate && p2HasUpdate) return 1;
-
-            return p1.getName().compareToIgnoreCase(p2.getName());
-        };
-    }
-
-    private TableRow<TrackedProgram> createRowFactory(TableView<TrackedProgram> tv) {
-        TableRow<TrackedProgram> row = new TableRow<>() {
-            @Override
-            protected void updateItem(TrackedProgram item, boolean empty) {
-                super.updateItem(item, empty);
-                updateRowStyle(this);
-            }
-        };
-
-        row.selectedProperty().addListener((obs, wasSelected, isSelected) -> updateRowStyle(row));
-
-        row.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, event -> {
-            if (!row.isEmpty() && event.getButton() == javafx.scene.input.MouseButton.PRIMARY) {
-                if (row.isSelected()) {
-                    programTable.getSelectionModel().clearSelection();
-                } else {
-                    programTable.getSelectionModel().select(row.getItem());
-                }
-                event.consume();
-            }
-        });
-
-        return row;
-    }
-
-    private void updateRowStyle(TableRow<TrackedProgram> row) {
-        if (row.isEmpty() || row.getItem() == null) {
-            row.setStyle("");
-        } else {
-            if (row.isSelected()) {
-                row.setStyle("");
-            } else {
-                TrackedProgram item = row.getItem();
-                String curr = item.getCurrentVersion();
-                String last = item.getLastDownloadedVersion();
-                boolean isOutdated = !curr.equals(last) && !curr.equals("N/A");
-                row.pseudoClassStateChanged(OUTDATED_PSEUDO_CLASS, isOutdated);
-            }
-        }
-    }
-
     private void loadData() {
         List<TrackedProgram> loaded = storageService.loadData();
         if (loaded != null) {
             programList.setAll(loaded);
-            FXCollections.sort(programList, createProgramComparator());
+            tableManager.refreshSort();
         }
     }
-
 
     @FXML
     private void onScanUpdatesClick() {
         Dialog<ButtonType> progressDialog = new Dialog<>();
-        styleDialog(progressDialog);
+        styleDialog(progressDialog, configService);
         progressDialog.setTitle(resources.getString("dialog.scan.title"));
         progressDialog.setHeaderText(resources.getString("dialog.scan.header"));
 
@@ -244,10 +167,10 @@ public class MainController implements Initializable {
                 statusLabel,
                 () -> programTable.refresh(), // Update Callback
                 () -> {                       // Finished Callback
-                    FXCollections.sort(programList, createProgramComparator());
+                    tableManager.refreshSort();
                     progressDialog.setResult(ButtonType.CANCEL);
                     progressDialog.close();
-                    programTable.requestFocus();
+                    tableManager.requestFocus();
                 }
         );
 
@@ -287,9 +210,13 @@ public class MainController implements Initializable {
         } else {
             handleDownloadError(selected);
         }
-        programTable.requestFocus();
+        tableManager.requestFocus();
     }
 
+    /**
+     * Resolves the download URL via a headless browser interaction (simulating a click)
+     * or by resolving a direct link.
+     */
     private void resolveAndDownload(TrackedProgram program) {
         String targetPageUrl = program.getUrl();
 
@@ -312,6 +239,7 @@ public class MainController implements Initializable {
                 if (newState == Worker.State.SUCCEEDED) {
                     browserManager.getEngine().getLoadWorker().stateProperty().removeListener(this);
 
+                    // Wait for page to be fully interactive
                     new java.util.Timer().schedule(new java.util.TimerTask() {
                         @Override
                         public void run() {
@@ -331,13 +259,13 @@ public class MainController implements Initializable {
         try {
             String selector = program.getDownloadSelector();
 
-            // Script wrapped in an IIFE ((function(){...})()) to allow 'return' statements
+            // Script wrapped in an IIFE to simulate a click or extract the href
             String script =
                     "(function() { " +
                             "  var el = document.querySelector('" + selector.replace("'", "\\'") + "');" +
                             "  if(el) { " +
-                            "    if(el.tagName === 'A' && el.href) return el.href; " + // Return link URL
-                            "    el.click(); return 'CLICKED'; " +                     // Click button
+                            "    if(el.tagName === 'A' && el.href) return el.href; " +
+                            "    el.click(); return 'CLICKED'; " +
                             "  } " +
                             "  return ''; " +
                             "})()";
@@ -347,11 +275,7 @@ public class MainController implements Initializable {
 
             if ("CLICKED".equals(resultStr)) {
                 System.out.println("Button clicked via JS simulation.");
-                // Note: If the click triggers a file download dialog natively, JavaFX might suppress it
-                // unless a DownloadListener is attached to the engine (advanced topic).
-                // For direct links masked as buttons, this usually works.
             } else if (!resultStr.isEmpty()) {
-                // If the script returned a URL string
                 performInAppDownload(resultStr, program.getName());
             } else {
                 System.err.println("Selector element not found or invalid: " + selector);
@@ -368,7 +292,6 @@ public class MainController implements Initializable {
             FileChooser fileChooser = new FileChooser();
             fileChooser.setTitle(String.format(resources.getString("filechooser.save.title"), programName));
 
-            // --- Set default directory to Downloads ---
             File userHome = new File(System.getProperty("user.home"));
             File downloadsDir = new File(userHome, "Downloads");
 
@@ -377,25 +300,21 @@ public class MainController implements Initializable {
             } else {
                 fileChooser.setInitialDirectory(userHome);
             }
-            // ------------------------------------------
 
-            // Use the service to suggest a safe filename
             String proposedName = downloadService.suggestFilename(urlString, programName);
             fileChooser.setInitialFileName(proposedName);
 
             java.io.File destFile = fileChooser.showSaveDialog(dashboardView.getScene().getWindow());
 
             if (destFile != null) {
-                // Delegate the background task creation to the service
                 Task<Void> downloadTask = downloadService.createDownloadTask(urlString, destFile, resources);
 
                 downloadTask.setOnSucceeded(e -> {
                     Alert info = new Alert(Alert.AlertType.INFORMATION, resources.getString("dialog.download.success"));
-                    styleDialog(info);
+                    styleDialog(info, configService);
                     info.setHeaderText(null);
                     info.show();
 
-                    // Auto-update 'Last Downloaded Version'
                     TrackedProgram p = programList.stream()
                             .filter(prog -> prog.getName().equals(programName))
                             .findFirst().orElse(null);
@@ -429,7 +348,7 @@ public class MainController implements Initializable {
     private void handleDownloadError(TrackedProgram program) {
         Platform.runLater(() -> {
             Alert alert = new Alert(Alert.AlertType.WARNING);
-            styleDialog(alert);
+            styleDialog(alert, configService);
             alert.setTitle(resources.getString("dialog.download.fail.title"));
             alert.setHeaderText(resources.getString("dialog.download.fail.header"));
             alert.setContentText(resources.getString("dialog.download.fail.content"));
@@ -440,15 +359,7 @@ public class MainController implements Initializable {
                 switchToEditor(program);
             }
         });
-        programTable.requestFocus();
-    }
-
-    private void openSystemBrowser(String url) {
-        try {
-            java.awt.Desktop.getDesktop().browse(java.net.URI.create(url));
-        } catch (Exception e) {
-            System.err.println("Failed to open browser: " + e.getMessage());
-        }
+        tableManager.requestFocus();
     }
 
     // --- Browser Navigation Delegated to BrowserManager ---
@@ -461,7 +372,7 @@ public class MainController implements Initializable {
     @FXML
     private void onAddProgramClick() {
         TextInputDialog dialog = new TextInputDialog();
-        styleDialog(dialog);
+        styleDialog(dialog, configService);
         dialog.setTitle(resources.getString("dialog.add.title"));
         dialog.setHeaderText(resources.getString("dialog.add.header"));
         dialog.setContentText(resources.getString("dialog.add.content"));
@@ -487,7 +398,7 @@ public class MainController implements Initializable {
         if (selected == null) return;
 
         TextInputDialog dialog = new TextInputDialog(selected.getName());
-        styleDialog(dialog);
+        styleDialog(dialog, configService);
         dialog.setTitle(resources.getString("dialog.edit.title"));
         dialog.setHeaderText(String.format(resources.getString("dialog.edit.header"), selected.getName()));
         dialog.setContentText(resources.getString("dialog.edit.content"));
@@ -505,7 +416,7 @@ public class MainController implements Initializable {
                 storageService.saveData(programList);
             }
         });
-        programTable.requestFocus();
+        tableManager.requestFocus();
     }
 
     private boolean isNameDuplicate(String name) {
@@ -515,7 +426,7 @@ public class MainController implements Initializable {
 
     private void showError(String title, String content) {
         Alert alert = new Alert(Alert.AlertType.ERROR);
-        styleDialog(alert);
+        styleDialog(alert, configService);
         alert.setTitle(resources.getString("dialog.error.title"));
         alert.setHeaderText(title);
         alert.setContentText(content);
@@ -531,24 +442,23 @@ public class MainController implements Initializable {
                 programTable.getSelectionModel().select(0);
             }
         }
-        programTable.requestFocus();
+        tableManager.requestFocus();
     }
 
     @FXML
     private void onEditSourceClick() {
         TrackedProgram selected = programTable.getSelectionModel().getSelectedItem();
         if (selected != null) switchToEditor(selected);
-        programTable.requestFocus();
+        tableManager.requestFocus();
     }
 
     @FXML
     private void onBackToDashboard() {
         browserManager.resetModes();
         switchToDashboard();
-        programTable.requestFocus();
+        tableManager.requestFocus();
     }
 
-    // --- View Navigation ---
     private void switchToEditor(TrackedProgram program) {
         this.currentlyEditingProgram = program;
         editorProgramNameLabel.setText(program.getName());
@@ -557,7 +467,7 @@ public class MainController implements Initializable {
             downloadUrlField.setText(program.getDownloadUrl() != null ? program.getDownloadUrl() : "");
         }
 
-        browserManager.loadProgram(program); // Delegate loading
+        browserManager.loadProgram(program);
         dashboardView.setVisible(false);
         editorView.setVisible(true);
     }
@@ -582,10 +492,9 @@ public class MainController implements Initializable {
         }
 
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        styleDialog(alert);
+        styleDialog(alert, configService);
         alert.setTitle(resources.getString("dialog.about.title"));
 
-        // Use the loaded version string
         alert.setHeaderText(String.format(resources.getString("dialog.about.header"), appVersion));
 
         String javaVersion = System.getProperty("java.version");
@@ -596,7 +505,7 @@ public class MainController implements Initializable {
         alert.setContentText(content);
         alert.showAndWait();
 
-        programTable.requestFocus();
+        tableManager.requestFocus();
     }
 
     // --- Language Support ---
@@ -616,7 +525,6 @@ public class MainController implements Initializable {
             Stage stage = (Stage) dashboardView.getScene().getWindow();
             Locale locale = configService.getConfig().getLocale();
 
-            // Standard ResourceBundle loading
             ResourceBundle bundle = ResourceBundle.getBundle("com.github.konradcz2001.updatetracker.messages", locale);
 
             FXMLLoader loader = new FXMLLoader(UpdateTrackerApp.class.getResource("main-view.fxml"), bundle);
@@ -631,20 +539,6 @@ public class MainController implements Initializable {
 
         } catch (Exception e) {
             e.printStackTrace();
-        }
-    }
-
-    // --- Helper Method for Dialog Styling ---
-    private void styleDialog(Dialog<?> dialog) {
-        DialogPane pane = dialog.getDialogPane();
-        String cssUrl = com.github.konradcz2001.updatetracker.UpdateTrackerApp.class
-                .getResource("style.css")
-                .toExternalForm();
-
-        pane.getStylesheets().add(cssUrl);
-
-        if (configService.getConfig().isDarkMode()) {
-            pane.getStyleClass().add("dark-mode");
         }
     }
 
