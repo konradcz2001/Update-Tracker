@@ -75,6 +75,12 @@ public class BrowserManager {
 
                 if (isVersionSelectionMode || isDownloadSelectionMode) {
                     injectSelectorScript();
+                    // Restore active state on page reload
+                    try {
+                        engine.executeScript("window.selectionEnabled = true;");
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
             }
         });
@@ -134,11 +140,17 @@ public class BrowserManager {
                 instructionLabel.getStyleClass().add("active-mode");
             }
             injectSelectorScript();
+            try {
+                engine.executeScript("window.selectionEnabled = true;");
+            } catch (Exception ignored) {}
         } else {
             selectElementBtn.setText(resources.getString("btn.select_version"));
             selectDownloadBtn.setDisable(false);
             instructionLabel.setText(resources.getString("browser.instr.default"));
             instructionLabel.getStyleClass().remove("active-mode");
+            try {
+                engine.executeScript("window.selectionEnabled = false;");
+            } catch (Exception ignored) {}
         }
     }
 
@@ -153,11 +165,17 @@ public class BrowserManager {
                 instructionLabel.getStyleClass().add("active-mode");
             }
             injectSelectorScript();
+            try {
+                engine.executeScript("window.selectionEnabled = true;");
+            } catch (Exception ignored) {}
         } else {
             selectDownloadBtn.setText(resources.getString("btn.select_download"));
             selectElementBtn.setDisable(false);
             instructionLabel.setText(resources.getString("browser.instr.default"));
             instructionLabel.getStyleClass().remove("active-mode");
+            try {
+                engine.executeScript("window.selectionEnabled = false;");
+            } catch (Exception ignored) {}
         }
     }
 
@@ -180,6 +198,10 @@ public class BrowserManager {
     private void injectSelectorScript() {
         String script = """
         (function() {
+            // Idempotency check: avoid adding multiple listeners
+            if (window.trackerListenersAttached) return;
+            window.trackerListenersAttached = true;
+
             if (!document.getElementById('tracker-style')) {
                 var style = document.createElement('style');
                 style.id = 'tracker-style';
@@ -232,6 +254,12 @@ public class BrowserManager {
             }
 
             document.addEventListener('mouseover', function(e) {
+                // Ignore if selection is disabled globally
+                if (!window.selectionEnabled) {
+                    clearHighlights();
+                    return;
+                }
+
                 if (!e.ctrlKey) {
                     clearHighlights();
                     return;
@@ -247,6 +275,8 @@ public class BrowserManager {
             });
 
             document.addEventListener('click', function(e) {
+                if (!window.selectionEnabled) return;
+        
                 if (!e.ctrlKey) return;
                 e.preventDefault();
                 e.stopPropagation();
