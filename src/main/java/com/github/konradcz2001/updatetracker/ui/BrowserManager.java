@@ -216,45 +216,72 @@ public class BrowserManager {
                 }
             }
 
+            // getCssPath with nth-of-type support for identical siblings
             function getCssPath(el) {
                 if (!(el instanceof Element)) return;
-                if (el.id) return '#' + el.id;
-
+        
                 var path = [];
                 var current = el;
         
                 while (current && current.nodeType === Node.ELEMENT_NODE) {
                     var selector = current.nodeName.toLowerCase();
+        
                     if (current.id) {
                         selector = '#' + current.id;
                         path.unshift(selector);
                         break;
-                    }
-                    var className = current.getAttribute("class");
-                    if (className && className.trim().length > 0) {
-                        // Filter out 'tracker-highlight' so it doesn't get saved in the selector
-                        var validClasses = className.split(/\\s+/).filter(function(c) {
-                            return c.length > 2 &&
-                                   !c.startsWith('_') &&
-                                   !c.startsWith('rs-') &&
-                                   c !== 'tracker-highlight';
-                        });
-                        if (validClasses.length > 0) {
-                            selector += '.' + validClasses.join('.');
+                    } else {
+                        var useNth = false;
+                        var nth = 1;
+        
+                        // Check if we need nth-of-type by looking at siblings
+                        var parent = current.parentNode;
+                        if (parent) {
+                            var siblings = parent.children;
+                            var sameTagCount = 0;
+        
+                            for (var i = 0; i < siblings.length; i++) {
+                                var sib = siblings[i];
+                                if (sib.nodeName === current.nodeName) {
+                                    sameTagCount++;
+                                    if (sib === current) {
+                                        nth = sameTagCount;
+                                    }
+                                }
+                            }
+        
+                            if (sameTagCount > 1) {
+                                useNth = true;
+                            }
                         }
+        
+                        if (useNth) {
+                            selector += ':nth-of-type(' + nth + ')';
+                        } else {
+                            // Only append classes if we don't use nth-of-type (cleaner selectors)
+                            var className = current.getAttribute("class");
+                            if (className && className.trim().length > 0) {
+                                var validClasses = className.split(/\\s+/).filter(function(c) {
+                                    return c.length > 2 &&
+                                           !c.startsWith('_') &&
+                                           !c.startsWith('rs-') &&
+                                           c !== 'tracker-highlight';
+                                });
+                                if (validClasses.length > 0) {
+                                    selector += '.' + validClasses.join('.');
+                                }
+                            }
+                        }
+        
+                        path.unshift(selector);
                     }
-                    path.unshift(selector);
-                    var looseSelector = path.join(' ');
-                    if (document.querySelectorAll(looseSelector).length === 1) {
-                        return looseSelector;
-                    }
+        
                     current = current.parentNode;
                 }
-                return path.join(' ');
+                return path.join(' > ');
             }
 
             document.addEventListener('mouseover', function(e) {
-                // Ignore if selection is disabled globally
                 if (!window.selectionEnabled) {
                     clearHighlights();
                     return;
@@ -285,9 +312,6 @@ public class BrowserManager {
                 if(!target) return false;
 
                 var cssSelector = getCssPath(target);
-                if (cssSelector) {
-                    cssSelector = cssSelector.replace(/div\\./g, '.');
-                }
                 var textContent = (target.innerText || target.textContent || "").replace(/\\s+/g, ' ').trim();
         
                 if(window.javaApp) {
