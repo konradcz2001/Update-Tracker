@@ -330,9 +330,17 @@ public class BrowserManager {
 
                 onSaveCallback.accept(null);
 
-                Alert info = new Alert(Alert.AlertType.INFORMATION, String.format(resources.getString("dialog.config.saved"), (finalPageUrl.isEmpty() ? "(Default)" : finalPageUrl)));
+                Alert info = new Alert(Alert.AlertType.INFORMATION);
                 styleDialog(info, configService, resources);
+                info.setTitle(resources.getString("dialog.config.download.title"));
                 info.setHeaderText(null);
+
+                String msg = String.format(resources.getString("dialog.config.saved"), (finalPageUrl.isEmpty() ? "(Default)" : finalPageUrl));
+                Label msgLabel = new Label(msg);
+                msgLabel.setWrapText(true);
+                msgLabel.setPrefWidth(400);
+
+                info.getDialogPane().setContent(msgLabel);
                 info.showAndWait();
 
                 toggleDownloadSelectionMode();
