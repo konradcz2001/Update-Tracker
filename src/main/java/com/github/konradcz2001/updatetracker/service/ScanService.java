@@ -82,12 +82,16 @@ public class ScanService {
 
                 // Wait for all scans to complete
                 try {
-                    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+                    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get();
+                } catch (InterruptedException | java.util.concurrent.CancellationException e) {
+                    // Task cancelled, allow falling through to finally
                 } catch (Exception e) {
                     if (!isCancelled()) e.printStackTrace();
                 } finally {
                     executor.shutdownNow();
                 }
+
+                if (isCancelled()) return null; // Exit immediately if cancelled
 
                 updateProgress(total, total);
                 updateMessage(resources.getString("dialog.scan.finalizing"));
