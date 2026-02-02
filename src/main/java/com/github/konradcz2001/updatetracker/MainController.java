@@ -354,10 +354,6 @@ public class MainController implements Initializable {
             alert.setContentText(resources.getString("dialog.download.fail.content"));
 
             alert.showAndWait();
-
-            if (program != null) {
-                switchToEditor(program);
-            }
         });
         tableManager.requestFocus();
     }
