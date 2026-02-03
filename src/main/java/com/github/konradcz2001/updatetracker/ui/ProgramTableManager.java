@@ -1,12 +1,20 @@
 package com.github.konradcz2001.updatetracker.ui;
 
 import com.github.konradcz2001.updatetracker.TrackedProgram;
-import javafx.beans.binding.Bindings;
+import javafx.animation.KeyFrame;
+import javafx.animation.KeyValue;
+import javafx.animation.Timeline;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.SortedList;
 import javafx.css.PseudoClass;
 import javafx.scene.control.*;
+import javafx.scene.paint.Color;
+import javafx.scene.paint.CycleMethod;
+import javafx.scene.paint.LinearGradient;
+import javafx.scene.paint.Stop;
+import javafx.scene.shape.Rectangle;
+import javafx.util.Duration;
 
 import java.util.Comparator;
 import java.util.ResourceBundle;
@@ -54,11 +62,19 @@ public class ProgramTableManager {
             TableColumn<TrackedProgram, String> colDateNew,
             TableColumn<TrackedProgram, String> colCurrentVersion
     ) {
+        // Data bindings
         colName.setCellValueFactory(cellData -> cellData.getValue().nameProperty());
         colLastVersion.setCellValueFactory(cellData -> cellData.getValue().lastDownloadedVersionProperty());
         colDateOld.setCellValueFactory(cellData -> cellData.getValue().dateFoundOldProperty());
         colDateNew.setCellValueFactory(cellData -> cellData.getValue().dateFoundNewProperty());
         colCurrentVersion.setCellValueFactory(cellData -> cellData.getValue().currentVersionProperty());
+
+        // Apply auto-scrolling (marquee) cell factory to all text columns
+        makeAutoScrollable(colName);
+        makeAutoScrollable(colLastVersion);
+        makeAutoScrollable(colDateOld);
+        makeAutoScrollable(colDateNew);
+        makeAutoScrollable(colCurrentVersion);
 
         SortedList<TrackedProgram> sortedList = new SortedList<>(programList);
         sortedList.comparatorProperty().bind(programTable.comparatorProperty());
@@ -79,6 +95,96 @@ public class ProgramTableManager {
         setupSelectionBindings();
     }
 
+    /**
+     * Configures a column to use an auto-scrolling (marquee) animation on hover.
+     * If text is longer than the cell, hovering over it will scroll it back and forth.
+     */
+    private void makeAutoScrollable(TableColumn<TrackedProgram, String> col) {
+        col.setCellFactory(column -> new TableCell<>() {
+            private final Label label = new Label();
+            private final ScrollPane scrollPane = new ScrollPane(label);
+            private final Timeline timeline = new Timeline();
+            private final Rectangle clipRect = new Rectangle();
+
+            {
+                // Setup ScrollPane to be invisible (no bars, transparent)
+                scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+                scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+                scrollPane.setPannable(false); // No manual dragging
+                scrollPane.setFitToHeight(true);
+                scrollPane.setStyle("-fx-background-color: transparent; -fx-background: transparent; -fx-padding: 0;");
+                label.setStyle("-fx-padding: 0 5 0 0; -fx-background-color: transparent;");
+
+                setGraphic(scrollPane);
+                setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
+
+                // --- Fade Effect Setup ---
+                // Bind clip size to scrollPane size
+                clipRect.widthProperty().bind(scrollPane.widthProperty());
+                clipRect.heightProperty().bind(scrollPane.heightProperty());
+
+                // Create a gradient mask: Visible (Black) -> Transparent
+                // The fade happens in the last 15% of the width
+                LinearGradient mask = new LinearGradient(0, 0, 1, 0, true, CycleMethod.NO_CYCLE,
+                        new Stop(0.0, Color.BLACK),
+                        new Stop(0.85, Color.BLACK),
+                        new Stop(1.0, Color.TRANSPARENT)
+                );
+                clipRect.setFill(mask);
+                scrollPane.setClip(clipRect);
+                // -------------------------
+
+                // Setup Hover Logic
+                scrollPane.setOnMouseEntered(e -> startScrolling());
+                scrollPane.setOnMouseExited(e -> stopScrolling());
+            }
+
+            private void startScrolling() {
+                // Only scroll if text is wider than the viewport
+                double contentWidth = label.getLayoutBounds().getWidth();
+                double viewportWidth = scrollPane.getViewportBounds().getWidth();
+
+                if (contentWidth > viewportWidth) {
+                    stopScrolling(); // Ensure clean state
+
+                    // Calculate duration based on length to keep consistent speed (e.g., 20ms per pixel)
+                    double distance = contentWidth - viewportWidth;
+                    double durationMillis = distance * 20;
+
+                    // Create animation: Pause -> Scroll Right -> Pause -> Scroll Back
+                    timeline.getKeyFrames().setAll(
+                            new KeyFrame(Duration.ZERO, new KeyValue(scrollPane.hvalueProperty(), 0)),
+                            new KeyFrame(Duration.millis(500), new KeyValue(scrollPane.hvalueProperty(), 0)), // Pause at start
+                            new KeyFrame(Duration.millis(500 + durationMillis), new KeyValue(scrollPane.hvalueProperty(), 1.0)), // Scroll to end
+                            new KeyFrame(Duration.millis(1500 + durationMillis), new KeyValue(scrollPane.hvalueProperty(), 1.0)) // Pause at end
+                    );
+
+                    timeline.setAutoReverse(true);
+                    timeline.setCycleCount(Timeline.INDEFINITE);
+                    timeline.play();
+                }
+            }
+
+            private void stopScrolling() {
+                timeline.stop();
+                scrollPane.setHvalue(0); // Reset to start
+            }
+
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setGraphic(null);
+                } else {
+                    label.setText(item);
+                    // Ensure text color matches row state (selected/unselected)
+                    label.textFillProperty().bind(textFillProperty());
+                    setGraphic(scrollPane);
+                }
+            }
+        });
+    }
+
     public void refreshSort() {
         FXCollections.sort(programList, createProgramComparator());
     }
@@ -93,10 +199,8 @@ public class ProgramTableManager {
         btnDelete.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
         btnConfigure.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
 
-        btnDownload.disableProperty().bind(Bindings.createBooleanBinding(() -> {
-            TrackedProgram p = selectionModel.getSelectedItem();
-            return p == null || "N/A".equals(p.getCurrentVersion()) || p.getDownloadSelector() == null || p.getDownloadSelector().isEmpty();
-        }, selectionModel.selectedItemProperty()));
+        // Update button is now available whenever a program is selected
+        btnDownload.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
     }
 
     /**

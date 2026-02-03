@@ -86,7 +86,10 @@ Update Tracker is a modern JavaFX desktop application designed to help you keep 
     - Hover over the version number on the webpage (it will highlight in red) and **Ctrl + Click** to select it.
     - Confirm the extracted text.
 3. **Scan for Updates:** On the dashboard, click "Scan Updates" to check all tracked programs.
-4. **Download:** If configured, use the "Download" button to get the update immediately.
+4. **Update Program:** Click the **"Update"** button to open the action menu:
+    - **Download File:** Automatically downloads the installer if a download link is configured.
+    - **Manual Update:** Manually marks the program as updated to the latest version.
+    - **Remove Source:** Clears the download configuration.
 
 ## 🤝 Contributing
 

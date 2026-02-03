@@ -57,7 +57,7 @@
                 <Button fx:id="btnEditName" text="%btn.edit" onAction="#onEditNameClick"/>
                 <Button fx:id="btnDelete" text="%btn.delete" onAction="#onDeleteProgramClick"/>
                 <Button fx:id="btnConfigure" text="%btn.configure" onAction="#onEditSourceClick"/>
-                <Button fx:id="btnDownload" text="%btn.download" onAction="#onDownloadUpdateClick"/>
+                <Button fx:id="btnDownload" text="%btn.update" onAction="#onDownloadUpdateClick"/>
 
                 <Button text="%btn.scan" onAction="#onScanUpdatesClick" styleClass="button-primary"/>
             </HBox>

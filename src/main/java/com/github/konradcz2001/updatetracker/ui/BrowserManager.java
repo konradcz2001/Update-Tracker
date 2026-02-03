@@ -75,6 +75,12 @@ public class BrowserManager {
 
                 if (isVersionSelectionMode || isDownloadSelectionMode) {
                     injectSelectorScript();
+                    // Restore active state on page reload
+                    try {
+                        engine.executeScript("window.selectionEnabled = true;");
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
             }
         });
@@ -134,11 +140,17 @@ public class BrowserManager {
                 instructionLabel.getStyleClass().add("active-mode");
             }
             injectSelectorScript();
+            try {
+                engine.executeScript("window.selectionEnabled = true;");
+            } catch (Exception ignored) {}
         } else {
             selectElementBtn.setText(resources.getString("btn.select_version"));
             selectDownloadBtn.setDisable(false);
             instructionLabel.setText(resources.getString("browser.instr.default"));
             instructionLabel.getStyleClass().remove("active-mode");
+            try {
+                engine.executeScript("window.selectionEnabled = false;");
+            } catch (Exception ignored) {}
         }
     }
 
@@ -153,11 +165,17 @@ public class BrowserManager {
                 instructionLabel.getStyleClass().add("active-mode");
             }
             injectSelectorScript();
+            try {
+                engine.executeScript("window.selectionEnabled = true;");
+            } catch (Exception ignored) {}
         } else {
             selectDownloadBtn.setText(resources.getString("btn.select_download"));
             selectElementBtn.setDisable(false);
             instructionLabel.setText(resources.getString("browser.instr.default"));
             instructionLabel.getStyleClass().remove("active-mode");
+            try {
+                engine.executeScript("window.selectionEnabled = false;");
+            } catch (Exception ignored) {}
         }
     }
 
@@ -180,6 +198,10 @@ public class BrowserManager {
     private void injectSelectorScript() {
         String script = """
         (function() {
+            // Idempotency check: avoid adding multiple listeners
+            if (window.trackerListenersAttached) return;
+            window.trackerListenersAttached = true;
+
             if (!document.getElementById('tracker-style')) {
                 var style = document.createElement('style');
                 style.id = 'tracker-style';
@@ -194,44 +216,87 @@ public class BrowserManager {
                 }
             }
 
+            // getCssPath with uniqueness check for IDs
             function getCssPath(el) {
                 if (!(el instanceof Element)) return;
-                if (el.id) return '#' + el.id;
-
+        
                 var path = [];
                 var current = el;
         
                 while (current && current.nodeType === Node.ELEMENT_NODE) {
                     var selector = current.nodeName.toLowerCase();
+                    var isUniqueId = false;
+        
                     if (current.id) {
-                        selector = '#' + current.id;
-                        path.unshift(selector);
-                        break;
-                    }
-                    var className = current.getAttribute("class");
-                    if (className && className.trim().length > 0) {
-                        // Filter out 'tracker-highlight' so it doesn't get saved in the selector
-                        var validClasses = className.split(/\\s+/).filter(function(c) {
-                            return c.length > 2 &&
-                                   !c.startsWith('_') &&
-                                   !c.startsWith('rs-') &&
-                                   c !== 'tracker-highlight';
-                        });
-                        if (validClasses.length > 0) {
-                            selector += '.' + validClasses.join('.');
+                        // Check if ID is truly unique in the document
+                        // Using attribute selector to avoid issues with special characters in ID
+                        var count = document.querySelectorAll('[id="' + current.id.replace(/"/g, '\\\\"') + '"]').length;
+        
+                        if (count === 1) {
+                            selector = '#' + current.id;
+                            isUniqueId = true;
+                        } else {
+                            // If duplicated, treat ID as a class/attribute modifier but keep traversing up
+                            selector += '#' + current.id;
                         }
                     }
-                    path.unshift(selector);
-                    var looseSelector = path.join(' ');
-                    if (document.querySelectorAll(looseSelector).length === 1) {
-                        return looseSelector;
+        
+                    if (isUniqueId) {
+                        path.unshift(selector);
+                        break; // Stop if we found a unique anchor
+                    } else {
+                        // Logic for nth-of-type for siblings
+                        var parent = current.parentNode;
+                        if (parent) {
+                            var siblings = parent.children;
+                            var sameTagCount = 0;
+                            var myIndex = 0;
+        
+                            for (var i = 0; i < siblings.length; i++) {
+                                var sib = siblings[i];
+                                if (sib.nodeName === current.nodeName) {
+                                    sameTagCount++;
+                                    if (sib === current) {
+                                        myIndex = sameTagCount;
+                                    }
+                                }
+                            }
+        
+                            if (sameTagCount > 1) {
+                                selector += ':nth-of-type(' + myIndex + ')';
+                            } else {
+                                // If unique tag among siblings and no ID, we can try classes for readability
+                                // but only if we didn't use an ID above
+                                if (!current.id) {
+                                    var className = current.getAttribute("class");
+                                    if (className && className.trim().length > 0) {
+                                        var validClasses = className.split(/\\s+/).filter(function(c) {
+                                            return c.length > 2 &&
+                                                   !c.startsWith('_') &&
+                                                   !c.startsWith('rs-') &&
+                                                   c !== 'tracker-highlight';
+                                        });
+                                        if (validClasses.length > 0) {
+                                            selector += '.' + validClasses.join('.');
+                                        }
+                                    }
+                                }
+                            }
+                        }
+        
+                        path.unshift(selector);
+                        current = current.parentNode;
                     }
-                    current = current.parentNode;
                 }
-                return path.join(' ');
+                return path.join(' > ');
             }
 
             document.addEventListener('mouseover', function(e) {
+                if (!window.selectionEnabled) {
+                    clearHighlights();
+                    return;
+                }
+
                 if (!e.ctrlKey) {
                     clearHighlights();
                     return;
@@ -247,6 +312,8 @@ public class BrowserManager {
             });
 
             document.addEventListener('click', function(e) {
+                if (!window.selectionEnabled) return;
+        
                 if (!e.ctrlKey) return;
                 e.preventDefault();
                 e.stopPropagation();
@@ -255,9 +322,6 @@ public class BrowserManager {
                 if(!target) return false;
 
                 var cssSelector = getCssPath(target);
-                if (cssSelector) {
-                    cssSelector = cssSelector.replace(/div\\./g, '.');
-                }
                 var textContent = (target.innerText || target.textContent || "").replace(/\\s+/g, ' ').trim();
         
                 if(window.javaApp) {
@@ -330,9 +394,17 @@ public class BrowserManager {
 
                 onSaveCallback.accept(null);
 
-                Alert info = new Alert(Alert.AlertType.INFORMATION, String.format(resources.getString("dialog.config.saved"), (finalPageUrl.isEmpty() ? "(Default)" : finalPageUrl)));
+                Alert info = new Alert(Alert.AlertType.INFORMATION);
                 styleDialog(info, configService, resources);
+                info.setTitle(resources.getString("dialog.config.download.title"));
                 info.setHeaderText(null);
+
+                String msg = String.format(resources.getString("dialog.config.saved"), (finalPageUrl.isEmpty() ? "(Default)" : finalPageUrl));
+                Label msgLabel = new Label(msg);
+                msgLabel.setWrapText(true);
+                msgLabel.setPrefWidth(400);
+
+                info.getDialogPane().setContent(msgLabel);
                 info.showAndWait();
 
                 toggleDownloadSelectionMode();

@@ -3,6 +3,7 @@ package com.github.konradcz2001.updatetracker;
 import com.github.konradcz2001.updatetracker.service.*;
 import com.github.konradcz2001.updatetracker.ui.BrowserManager;
 import com.github.konradcz2001.updatetracker.ui.ProgramTableManager;
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -13,6 +14,7 @@ import javafx.fxml.FXMLLoader;
 import javafx.fxml.Initializable;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Cursor;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
@@ -20,12 +22,15 @@ import javafx.scene.layout.VBox;
 import javafx.scene.web.WebView;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
+import javafx.util.Duration;
 import org.kordamp.ikonli.javafx.FontIcon;
 import java.io.File;
 import java.net.URL;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.ResourceBundle;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.github.konradcz2001.updatetracker.ui.DialogUtils.styleDialog;
 
@@ -202,21 +207,96 @@ public class MainController implements Initializable {
         TrackedProgram selected = programTable.getSelectionModel().getSelectedItem();
         if (selected == null) return;
 
-        if (selected.getDownloadSelector() != null && !selected.getDownloadSelector().isEmpty()) {
-            resolveAndDownload(selected);
+        Dialog<String> dialog = new Dialog<>();
+        styleDialog(dialog, configService, resources);
+        dialog.setTitle(resources.getString("dialog.update.title"));
+        dialog.setHeaderText(String.format(resources.getString("dialog.update.header"), selected.getName()));
+
+        // Create layout
+        VBox layout = new VBox(10);
+        layout.setPadding(new Insets(10));
+        layout.setAlignment(Pos.CENTER);
+        layout.setMinWidth(350); // Reasonable safe width
+
+        // Create buttons
+        Button btnDownload = new Button(resources.getString("dialog.update.btn.download"));
+        btnDownload.setMaxWidth(Double.MAX_VALUE);
+        btnDownload.setPadding(new Insets(10));
+
+        Button btnRemove = new Button(resources.getString("dialog.update.btn.remove"));
+        btnRemove.setMaxWidth(Double.MAX_VALUE);
+        btnRemove.setPadding(new Insets(10));
+
+        Button btnManual = new Button(resources.getString("dialog.update.btn.manual"));
+        btnManual.setMaxWidth(Double.MAX_VALUE);
+        btnManual.setPadding(new Insets(10));
+
+        // Logic to close dialog and return result
+        btnDownload.setOnAction(e -> {
+            dialog.setResult("DOWNLOAD");
+            dialog.close();
+        });
+        btnRemove.setOnAction(e -> {
+            dialog.setResult("REMOVE");
+            dialog.close();
+        });
+        btnManual.setOnAction(e -> {
+            dialog.setResult("MANUAL");
+            dialog.close();
+        });
+
+        // Add buttons to layout conditionally
+        boolean canDownload = selected.getDownloadSelector() != null && !selected.getDownloadSelector().isEmpty();
+        if (canDownload) {
+            layout.getChildren().addAll(btnDownload, btnRemove);
         }
-        else if (selected.getUrl() != null && !selected.getUrl().isEmpty()) {
-            performInAppDownload(selected.getUrl(), selected.getName());
-        } else {
-            handleDownloadError(selected);
+        layout.getChildren().add(btnManual);
+
+        dialog.getDialogPane().setContent(layout);
+
+        // Add Cancel button to the button bar (for ESC key and consistency)
+        ButtonType btnCancel = new ButtonType(resources.getString("dialog.btn.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
+        dialog.getDialogPane().getButtonTypes().add(btnCancel);
+
+        // Ensure clicking Cancel returns null instead of crashing with ClassCastException
+        dialog.setResultConverter(dialogButton -> null);
+
+        Optional<String> result = dialog.showAndWait();
+
+        if (result.isPresent()) {
+            switch (result.get()) {
+                case "DOWNLOAD" -> startDownloadProcess(selected);
+                case "REMOVE" -> {
+                    selected.setDownloadSelector(null);
+                    selected.setDownloadUrl(null);
+                    storageService.saveData(programList);
+                    programTable.refresh();
+                }
+                case "MANUAL" -> {
+                    if (!"N/A".equals(selected.getCurrentVersion())) {
+                        selected.setLastDownloadedVersion(selected.getCurrentVersion());
+                        storageService.saveData(programList);
+                        programTable.refresh();
+                    }
+                }
+            }
         }
         tableManager.requestFocus();
     }
 
-    /**
-     * Resolves the download URL via a headless browser interaction (simulating a click)
-     * or by resolving a direct link.
-     */
+    private void startDownloadProcess(TrackedProgram selected) {
+        setWaitCursor(true); // START WAIT
+        Platform.runLater(() -> {
+            if (selected.getDownloadSelector() != null && !selected.getDownloadSelector().isEmpty()) {
+                resolveAndDownload(selected);
+            } else {
+                setWaitCursor(false);
+                handleDownloadError(selected);
+            }
+            tableManager.requestFocus();
+        });
+    }
+
     private void resolveAndDownload(TrackedProgram program) {
         String targetPageUrl = program.getUrl();
 
@@ -226,7 +306,12 @@ public class MainController implements Initializable {
             targetPageUrl = downloadService.resolveDownloadUrl(program.getDownloadUrl(), version);
         }
 
-        if (targetPageUrl == null || targetPageUrl.isEmpty()) return;
+        if (targetPageUrl == null || targetPageUrl.isEmpty()) {
+            setWaitCursor(false);
+            handleDownloadError(program);
+            return;
+        }
+
         if (!targetPageUrl.startsWith("http")) targetPageUrl = "https://" + targetPageUrl;
 
         System.out.println("Navigating to download page: " + targetPageUrl);
@@ -239,7 +324,6 @@ public class MainController implements Initializable {
                 if (newState == Worker.State.SUCCEEDED) {
                     browserManager.getEngine().getLoadWorker().stateProperty().removeListener(this);
 
-                    // Wait for page to be fully interactive
                     new java.util.Timer().schedule(new java.util.TimerTask() {
                         @Override
                         public void run() {
@@ -249,6 +333,7 @@ public class MainController implements Initializable {
 
                 } else if (newState == Worker.State.FAILED) {
                     browserManager.getEngine().getLoadWorker().stateProperty().removeListener(this);
+                    setWaitCursor(false);
                     handleDownloadError(program);
                 }
             }
@@ -259,7 +344,7 @@ public class MainController implements Initializable {
         try {
             String selector = program.getDownloadSelector();
 
-            // Script wrapped in an IIFE to simulate a click or extract the href
+            // Prepare script to simulate click
             String script =
                     "(function() { " +
                             "  var el = document.querySelector('" + selector.replace("'", "\\'") + "');" +
@@ -270,21 +355,75 @@ public class MainController implements Initializable {
                             "  return ''; " +
                             "})()";
 
+            // We must set up the listener BEFORE verifying the result, or immediately after
+            // But since executeScript is synchronous, we handle the result.
+            // If the result is 'CLICKED', it means the JS action happened, but we don't have a URL yet.
+            // We need to wait and see if the browser navigates to a file.
+
             Object result = browserManager.getEngine().executeScript(script);
             String resultStr = (result != null) ? result.toString() : "";
 
             if ("CLICKED".equals(resultStr)) {
-                System.out.println("Button clicked via JS simulation.");
+                System.out.println("Button clicked via JS simulation. Monitoring for redirect...");
+                // Don't stop cursor yet, wait for redirection
+                detectRedirectionAndDownload(program);
             } else if (!resultStr.isEmpty()) {
+                setWaitCursor(false);
                 performInAppDownload(resultStr, program.getName());
             } else {
+                setWaitCursor(false);
                 System.err.println("Selector element not found or invalid: " + selector);
                 handleDownloadError(program);
             }
         } catch (Exception e) {
             e.printStackTrace();
+            setWaitCursor(false);
             handleDownloadError(program);
         }
+    }
+
+    /**
+     * Monitors the WebView location for a few seconds to detect if the click triggered a download redirection.
+     */
+    private void detectRedirectionAndDownload(TrackedProgram program) {
+        final AtomicBoolean downloadStarted = new AtomicBoolean(false);
+
+        // Listener for location changes (redirects)
+        javafx.beans.value.ChangeListener<String> locationListener = (obs, oldLoc, newLoc) -> {
+            if (downloadStarted.get()) return;
+
+            // Check if new location looks like a file
+            if (newLoc != null && (
+                    newLoc.endsWith(".zip") || newLoc.endsWith(".exe") ||
+                            newLoc.endsWith(".msi") || newLoc.endsWith(".7z") ||
+                            newLoc.endsWith(".rar") || newLoc.contains(".zip?") ||
+                            newLoc.contains(".exe?"))) {
+
+                downloadStarted.set(true);
+                System.out.println("Redirected to file: " + newLoc);
+
+                // Stop loading the file in WebView (to prevent it from trying to render binary)
+                browserManager.getEngine().getLoadWorker().cancel();
+
+                setWaitCursor(false);
+                performInAppDownload(newLoc, program.getName());
+            }
+        };
+
+        browserManager.getEngine().locationProperty().addListener(locationListener);
+
+        // Timeout fallback - if nothing happens in 6 seconds
+        PauseTransition timeout = new PauseTransition(Duration.seconds(6));
+        timeout.setOnFinished(e -> {
+            browserManager.getEngine().locationProperty().removeListener(locationListener);
+            if (!downloadStarted.get()) {
+                setWaitCursor(false);
+                // If the URL didn't change, we assume the click failed or required a popup we don't handle
+                System.err.println("Timeout waiting for download redirect.");
+                handleDownloadError(program);
+            }
+        });
+        timeout.play();
     }
 
     private void performInAppDownload(String urlString, String programName) {
@@ -354,12 +493,14 @@ public class MainController implements Initializable {
             alert.setContentText(resources.getString("dialog.download.fail.content"));
 
             alert.showAndWait();
-
-            if (program != null) {
-                switchToEditor(program);
-            }
         });
         tableManager.requestFocus();
+    }
+
+    private void setWaitCursor(boolean wait) {
+        if (dashboardView.getScene() != null) {
+            dashboardView.getScene().setCursor(wait ? Cursor.WAIT : Cursor.DEFAULT);
+        }
     }
 
     // --- Browser Navigation Delegated to BrowserManager ---
