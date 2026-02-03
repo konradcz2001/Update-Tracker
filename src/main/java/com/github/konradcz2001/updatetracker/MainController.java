@@ -28,6 +28,7 @@ import java.io.File;
 import java.net.URL;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.ResourceBundle;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -206,15 +207,88 @@ public class MainController implements Initializable {
         TrackedProgram selected = programTable.getSelectionModel().getSelectedItem();
         if (selected == null) return;
 
-        setWaitCursor(true); // START WAIT
+        Dialog<String> dialog = new Dialog<>();
+        styleDialog(dialog, configService, resources);
+        dialog.setTitle(resources.getString("dialog.update.title"));
+        dialog.setHeaderText(String.format(resources.getString("dialog.update.header"), selected.getName()));
 
+        // Create layout
+        VBox layout = new VBox(10);
+        layout.setPadding(new Insets(10));
+        layout.setAlignment(Pos.CENTER);
+        layout.setMinWidth(350); // Reasonable safe width
+
+        // Create buttons
+        Button btnDownload = new Button(resources.getString("dialog.update.btn.download"));
+        btnDownload.setMaxWidth(Double.MAX_VALUE);
+        btnDownload.setPadding(new Insets(10));
+
+        Button btnRemove = new Button(resources.getString("dialog.update.btn.remove"));
+        btnRemove.setMaxWidth(Double.MAX_VALUE);
+        btnRemove.setPadding(new Insets(10));
+
+        Button btnManual = new Button(resources.getString("dialog.update.btn.manual"));
+        btnManual.setMaxWidth(Double.MAX_VALUE);
+        btnManual.setPadding(new Insets(10));
+
+        // Logic to close dialog and return result
+        btnDownload.setOnAction(e -> {
+            dialog.setResult("DOWNLOAD");
+            dialog.close();
+        });
+        btnRemove.setOnAction(e -> {
+            dialog.setResult("REMOVE");
+            dialog.close();
+        });
+        btnManual.setOnAction(e -> {
+            dialog.setResult("MANUAL");
+            dialog.close();
+        });
+
+        // Add buttons to layout conditionally
+        boolean canDownload = selected.getDownloadSelector() != null && !selected.getDownloadSelector().isEmpty();
+        if (canDownload) {
+            layout.getChildren().addAll(btnDownload, btnRemove);
+        }
+        layout.getChildren().add(btnManual);
+
+        dialog.getDialogPane().setContent(layout);
+
+        // Add Cancel button to the button bar (for ESC key and consistency)
+        ButtonType btnCancel = new ButtonType(resources.getString("dialog.btn.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
+        dialog.getDialogPane().getButtonTypes().add(btnCancel);
+
+        // Ensure clicking Cancel returns null instead of crashing with ClassCastException
+        dialog.setResultConverter(dialogButton -> null);
+
+        Optional<String> result = dialog.showAndWait();
+
+        if (result.isPresent()) {
+            switch (result.get()) {
+                case "DOWNLOAD" -> startDownloadProcess(selected);
+                case "REMOVE" -> {
+                    selected.setDownloadSelector(null);
+                    selected.setDownloadUrl(null);
+                    storageService.saveData(programList);
+                    programTable.refresh();
+                }
+                case "MANUAL" -> {
+                    if (!"N/A".equals(selected.getCurrentVersion())) {
+                        selected.setLastDownloadedVersion(selected.getCurrentVersion());
+                        storageService.saveData(programList);
+                        programTable.refresh();
+                    }
+                }
+            }
+        }
+        tableManager.requestFocus();
+    }
+
+    private void startDownloadProcess(TrackedProgram selected) {
+        setWaitCursor(true); // START WAIT
         Platform.runLater(() -> {
             if (selected.getDownloadSelector() != null && !selected.getDownloadSelector().isEmpty()) {
                 resolveAndDownload(selected);
-            }
-            else if (selected.getUrl() != null && !selected.getUrl().isEmpty()) {
-                setWaitCursor(false);
-                performInAppDownload(selected.getUrl(), selected.getName());
             } else {
                 setWaitCursor(false);
                 handleDownloadError(selected);

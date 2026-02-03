@@ -1,7 +1,6 @@
 package com.github.konradcz2001.updatetracker.ui;
 
 import com.github.konradcz2001.updatetracker.TrackedProgram;
-import javafx.beans.binding.Bindings;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.SortedList;
@@ -93,10 +92,8 @@ public class ProgramTableManager {
         btnDelete.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
         btnConfigure.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
 
-        btnDownload.disableProperty().bind(Bindings.createBooleanBinding(() -> {
-            TrackedProgram p = selectionModel.getSelectedItem();
-            return p == null || "N/A".equals(p.getCurrentVersion()) || p.getDownloadSelector() == null || p.getDownloadSelector().isEmpty();
-        }, selectionModel.selectedItemProperty()));
+        // Update button is available whenever a program is selected (to allow manual update option)
+        btnDownload.disableProperty().bind(selectionModel.selectedItemProperty().isNull());
     }
 
     /**
