@@ -8,10 +8,11 @@
     -color-text-secondary: #6c757d;
     -color-border: #dee2e6;
 
-    -color-row-outdated-bg: #fff5f5;
-    -color-row-outdated-text: #e03131;
-    -color-selection: #e7f5ff;
-    -color-selection-text: #007bff;
+    /* Darkened colors for better visibility in Light Mode */
+    -color-row-outdated-bg: #ffe0e0;
+    -color-row-outdated-text: #c92a2a;
+    -color-selection: #d0ebff;
+    -color-selection-text: #0056b3;
 
     -fx-base: -color-bg-main;
     -fx-background: -color-bg-main;
@@ -142,8 +143,12 @@
     -fx-background-insets: 0;
 }
 
-.table-row-cell:filled:selected .text {
+/* Explicitly target labels inside selected cells to override default white text */
+.table-row-cell:filled:selected .text,
+.table-row-cell:filled:selected .label,
+.table-row-cell:filled:selected .table-cell {
     -fx-fill: -color-selection-text;
+    -fx-text-fill: -color-selection-text;
 }
 
 /* Outdated Row Selection (Force selection color over outdated color) */
